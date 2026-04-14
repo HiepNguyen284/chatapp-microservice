@@ -38,7 +38,7 @@ flowchart TD
     I -->|Hợp lệ| J[User: Nhận tin nhắn real-time]
     I -->|Vi phạm| K[Hệ thống: Chặn tin nhắn + Ghi log]
     K --> L[Admin: Xem log tin nhắn bị chặn]
-    D --> M[Admin: Xem log tin nhắn bị chặn]
+    D --> L
 ```
 
 **Process Steps:**
@@ -264,8 +264,8 @@ Service Contract specification for each service. Full OpenAPI specs:
 | `/health` | GET | Health check | — | 200 |
 | `/api/friends/requests` | POST | Gửi lời mời kết bạn (JWT required) | `{ targetUserId }` | 201, 400, 409 |
 | `/api/friends/requests/received` | GET | Lấy danh sách lời mời nhận được (JWT required) | — | 200, 401 |
-| `/api/friends/requests/{id}/accept` | PUT | Chấp nhận lời mời (JWT required) | — | 200, 404 |
-| `/api/friends/requests/{id}/reject` | PUT | Từ chối lời mời (JWT required) | — | 200, 404 |
+| `/api/friends/requests/{id}/accept` | PUT | Chấp nhận lời mời (JWT required) | — | 200, 401, 404 |
+| `/api/friends/requests/{id}/reject` | PUT | Từ chối lời mời (JWT required) | — | 200, 401, 404 |
 | `/api/friends` | GET | Lấy danh sách bạn bè (JWT required) | — | 200, 401 |
 
 **Message service:**
@@ -273,7 +273,7 @@ Service Contract specification for each service. Full OpenAPI specs:
 | Endpoint | Method | Description | Request Body | Response Codes |
 |----------|--------|-------------|--------------|----------------|
 | `/health` | GET | Health check | — | 200 |
-| `/api/messages` | POST | Gửi tin nhắn (JWT required, tự động lọc nội dung) | `{ receiverId, content }` | 201, 400, 403 |
+| `/api/messages` | POST | Gửi tin nhắn (JWT required, lọc nội dung; 403 nếu receiver không phải bạn bè) | `{ receiverId, content }` | 201, 400, 403 |
 | `/api/messages/{userId}` | GET | Lấy lịch sử tin nhắn với 1 user (JWT required) | Query: `?page=1&limit=50` | 200, 401 |
 | `/ws/messages` | WebSocket | Kết nối WebSocket nhận tin nhắn real-time | — | — |
 | `/api/moderation/banned-words` | GET | Xem danh sách từ khóa cấm (ADMIN only) | — | 200, 403 |
