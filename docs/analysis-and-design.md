@@ -322,12 +322,12 @@ flowchart TD
     D -->|No| D2[Create PENDING request]
     D2 --> D3[Return 201 Created]
 
-    C -->|PUT /requests/{id}/accept| E{Request exists + belongs to user?}
+    C -->|PUT /requests/<id>/accept| E{Request exists + belongs to user?}
     E -->|No| E1[Return 404 Not Found]
     E -->|Yes| E2[Update status → ACCEPTED]
     E2 --> E3[Return 200 OK]
 
-    C -->|PUT /requests/{id}/reject| F{Request exists + belongs to user?}
+    C -->|PUT /requests/<id>/reject| F{Request exists + belongs to user?}
     F -->|No| F1[Return 404 Not Found]
     F -->|Yes| F2[Update status → REJECTED]
     F2 --> F3[Return 200 OK]
@@ -352,7 +352,7 @@ flowchart TD
     G --> H[Send via WebSocket to receiver]
     H --> I[Return 201 Created]
 
-    C -->|GET /messages/{userId}| J[Query messages between 2 users]
+    C -->|GET /messages/<userId>| J[Query messages between 2 users]
     J --> J1[Return 200 OK + message history]
 
     C -->|POST /moderation/banned-words| K{Role = ADMIN?}
