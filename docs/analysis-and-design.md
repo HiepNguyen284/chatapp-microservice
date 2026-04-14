@@ -20,7 +20,7 @@
   - **User (Người dùng)**: Đăng ký tài khoản, đăng nhập, tìm kiếm và kết bạn với người dùng khác, gửi/nhận tin nhắn 1-1 real-time. User chịu ràng buộc bởi bộ lọc nội dung — tin nhắn chứa từ khóa cấm sẽ bị chặn.
   - **Admin (Quản trị viên)**: Đăng nhập với quyền quản trị, quản lý danh sách từ khóa cấm (thêm/xóa).
 - **Scope**:
-  - **In-scope**: Đăng ký/đăng nhập (JWT), tìm kiếm người dùng, gửi/chấp nhận/từ chối lời mời kết bạn, nhắn tin 1-1 real-time (WebSocket), quản lý từ khóa cấm (CRUD), tự động lọc nội dung tin nhắn.
+  - **In-scope**: Đăng ký/đăng nhập (JWT), tìm kiếm người dùng, gửi/chấp nhận/từ chối lời mời kết bạn, nhắn tin 1-1 real-time (WebSocket), quản lý từ khóa cấm (thêm/xóa/xem), tự động lọc nội dung tin nhắn.
   - **Out-of-scope**: Nhắn tin nhóm, gọi thoại/video, gửi file/hình ảnh, thông báo đẩy (push notification), quản lý hồ sơ cá nhân nâng cao (avatar, bio), xóa tài khoản, quên mật khẩu.
 
 **Process Diagram:**
@@ -45,7 +45,7 @@ flowchart TD
 |---|------|-------|--------|
 | 1 | Đăng ký tài khoản | User | User nhập thông tin và tạo tài khoản mới |
 | 2 | Đăng nhập | User / Admin | Xác thực vào hệ thống bằng username/password |
-| 3 | Thiết lập danh sách từ khóa cấm | Admin | Admin thêm/sửa/xóa các từ khóa bị cấm trong hệ thống |
+| 3 | Thiết lập danh sách từ khóa cấm | Admin | Admin thêm/xóa các từ khóa bị cấm trong hệ thống |
 | 4 | Tìm kiếm người dùng | User | User tìm kiếm người dùng khác theo tên hoặc email |
 | 5 | Gửi lời mời kết bạn | User | User gửi yêu cầu kết bạn đến người dùng tìm được |
 | 6 | Chấp nhận / Từ chối lời mời | User | User phản hồi lời mời kết bạn nhận được |
@@ -151,13 +151,12 @@ Map entities/processes to REST URI Resources.
 | friend-service | Chấp nhận lời mời | `/api/friends/requests/{id}/accept` | PUT |
 | friend-service | Từ chối lời mời | `/api/friends/requests/{id}/reject` | PUT |
 | friend-service | Lấy danh sách bạn bè | `/api/friends` | GET |
-| message-service | Gửi tin nhắn (kèm lọc nội dung) | `/api/messages` | POST |
+| message-service | Gửi tin nhắn (kiểm tra bạn bè + lọc nội dung) | `/api/messages` | POST |
 | message-service | Lấy lịch sử tin nhắn | `/api/messages/{userId}` | GET |
 | message-service | Nhận tin nhắn real-time | `/ws/messages` | WebSocket |
 | message-service | Thêm từ khóa cấm | `/api/moderation/banned-words` | POST |
 | message-service | Xóa từ khóa cấm | `/api/moderation/banned-words/{id}` | DELETE |
 | message-service | Xem danh sách từ khóa cấm | `/api/moderation/banned-words` | GET |
-
 
 ### 2.7 Utility Service & Microservice Candidates
 
@@ -201,12 +200,14 @@ sequenceDiagram
     Gateway-->>Client: 200 OK (list of users)
 
     Client->>Gateway: POST /api/friends/requests (targetUserId, JWT)
+    Gateway->>Gateway: Validate JWT token
     Gateway->>FriendService: Forward friend request
     FriendService->>FriendService: Create PENDING request
     FriendService-->>Gateway: 201 Created
     Gateway-->>Client: 201 Created
 
     Client->>Gateway: PUT /api/friends/requests/{id}/accept (JWT)
+    Gateway->>Gateway: Validate JWT token
     Gateway->>FriendService: Forward accept request
     FriendService->>FriendService: Update status to ACCEPTED
     FriendService-->>Gateway: 200 OK
@@ -215,16 +216,24 @@ sequenceDiagram
     Client->>Gateway: POST /api/messages (receiverId, content, JWT)
     Gateway->>Gateway: Validate JWT token
     Gateway->>MessageService: Forward send message request
-    MessageService->>MessageService: Check content against banned words
+    MessageService->>FriendService: Verify friendship (senderId, receiverId)
 
-    alt Nội dung hợp lệ
-        MessageService->>MessageService: Save message to DB
-        MessageService->>Client: WebSocket: new message notification
-        MessageService-->>Gateway: 201 Created (message)
-        Gateway-->>Client: 201 Created
-    else Nội dung vi phạm
-        MessageService-->>Gateway: 400 Bad Request (message blocked)
-        Gateway-->>Client: 400 Bad Request (chứa từ khóa cấm)
+    alt Không phải bạn bè
+        FriendService-->>MessageService: Not friends
+        MessageService-->>Gateway: 403 Forbidden
+        Gateway-->>Client: 403 Forbidden
+    else Là bạn bè
+        FriendService-->>MessageService: Confirmed friends
+        MessageService->>MessageService: Check content against banned words
+        alt Nội dung hợp lệ
+            MessageService->>MessageService: Save message to DB
+            MessageService->>Client: WebSocket: new message notification
+            MessageService-->>Gateway: 201 Created (message)
+            Gateway-->>Client: 201 Created
+        else Nội dung vi phạm
+            MessageService-->>Gateway: 400 Bad Request (message blocked)
+            Gateway-->>Client: 400 Bad Request (chứa từ khóa cấm)
+        end
     end
 ```
 
@@ -268,12 +277,11 @@ Service Contract specification for each service. Full OpenAPI specs:
 |----------|--------|-------------|--------------|----------------|
 | `/health` | GET | Health check | — | 200 |
 | `/api/messages` | POST | Gửi tin nhắn (JWT required, lọc nội dung; 403 nếu receiver không phải bạn bè) | `{ receiverId, content }` | 201, 400, 403 |
-| `/api/messages/{userId}` | GET | Lấy lịch sử tin nhắn với 1 user (JWT required) | Query: `?page=1&limit=50` | 200, 401 |
+| `/api/messages/{userId}` | GET | Lấy lịch sử tin nhắn với 1 user (JWT required) | — | 200, 401 |
 | `/ws/messages` | WebSocket | Kết nối WebSocket nhận tin nhắn real-time | — | — |
 | `/api/moderation/banned-words` | GET | Xem danh sách từ khóa cấm (ADMIN only) | — | 200, 403 |
-| `/api/moderation/banned-words` | POST | Thêm từ khóa cấm (ADMIN only) | `{ word }` | 201, 400, 409 |
-| `/api/moderation/banned-words/{id}` | DELETE | Xóa từ khóa cấm (ADMIN only) | — | 200, 404 |
-
+| `/api/moderation/banned-words` | POST | Thêm từ khóa cấm (ADMIN only) | `{ word }` | 201, 400, 403, 409 |
+| `/api/moderation/banned-words/{id}` | DELETE | Xóa từ khóa cấm (ADMIN only) | — | 200, 403, 404 |
 
 ### 3.2 Service Logic Design
 
@@ -297,6 +305,10 @@ flowchart TD
     D -->|Valid| D2[Generate JWT token with role]
     D2 --> D3[Return 200 OK + token]
 
+    B -->|GET /users/me| F{JWT valid?}
+    F -->|No| F1[Return 401 Unauthorized]
+    F -->|Yes| F2[Return 200 OK + user profile]
+
     B -->|GET /users/search| E{JWT valid?}
     E -->|No| E1[Return 401 Unauthorized]
     E -->|Yes| E2[Query DB by keyword]
@@ -315,6 +327,9 @@ flowchart TD
     D -->|Yes| D1[Return 409 Conflict]
     D -->|No| D2[Create PENDING request]
     D2 --> D3[Return 201 Created]
+
+    C -->|GET /friends/requests/received| H[Query PENDING requests for user]
+    H --> H1[Return 200 OK + request list]
 
     C -->|PUT /requests/<id>/accept| E{Request exists + belongs to user?}
     E -->|No| E1[Return 404 Not Found]
@@ -338,7 +353,10 @@ flowchart TD
     B -->|No| B1[Return 401 Unauthorized]
     B -->|Yes| C{Endpoint?}
 
-    C -->|POST /messages| D[Load banned words from DB]
+    C -->|POST /messages| D0[Call friend-service: check friendship]
+    D0 --> D0a{Receiver is friend?}
+    D0a -->|No| D01[Return 403 Forbidden]
+    D0a -->|Yes| D[Load banned words from DB]
     D --> E{Content contains banned word?}
     E -->|Yes| F1[Return 400 Bad Request - message blocked]
     E -->|No| G[Save message to DB]
@@ -348,10 +366,22 @@ flowchart TD
     C -->|GET /messages/<userId>| J[Query messages between 2 users]
     J --> J1[Return 200 OK + message history]
 
+    C -->|GET /moderation/banned-words| L{Role = ADMIN?}
+    L -->|No| L1[Return 403 Forbidden]
+    L -->|Yes| L2[Query all banned words from DB]
+    L2 --> L3[Return 200 OK + banned word list]
+
     C -->|POST /moderation/banned-words| K{Role = ADMIN?}
     K -->|No| K1[Return 403 Forbidden]
     K -->|Yes| K2{Word already exists?}
     K2 -->|Yes| K3[Return 409 Conflict]
     K2 -->|No| K4[Save to DB]
     K4 --> K5[Return 201 Created]
+
+    C -->|DELETE /moderation/banned-words/<id>| N{Role = ADMIN?}
+    N -->|No| N1[Return 403 Forbidden]
+    N -->|Yes| N2{Word exists?}
+    N2 -->|No| N3[Return 404 Not Found]
+    N2 -->|Yes| N4[Delete from DB]
+    N4 --> N5[Return 200 OK]
 ```
