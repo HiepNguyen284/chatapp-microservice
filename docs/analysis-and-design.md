@@ -18,10 +18,10 @@
 - **Business Process**: Người dùng đăng ký tài khoản, kết bạn và nhắn tin 1-1 trong hệ thống có kiểm duyệt nội dung tự động bằng từ khóa cấm
 - **Actors**:
   - **User (Người dùng)**: Đăng ký tài khoản, đăng nhập, tìm kiếm và kết bạn với người dùng khác, gửi/nhận tin nhắn 1-1 real-time. User chịu ràng buộc bởi bộ lọc nội dung — tin nhắn chứa từ khóa cấm sẽ bị chặn.
-  - **Admin (Quản trị viên)**: Đăng nhập với quyền quản trị, quản lý danh sách từ khóa cấm (thêm/xóa), giám sát hệ thống thông qua log các tin nhắn bị chặn.
+  - **Admin (Quản trị viên)**: Đăng nhập với quyền quản trị, quản lý danh sách từ khóa cấm (thêm/xóa).
 - **Scope**:
-  - **In-scope**: Đăng ký/đăng nhập (JWT), tìm kiếm người dùng, gửi/chấp nhận/từ chối lời mời kết bạn, nhắn tin 1-1 real-time (WebSocket), quản lý từ khóa cấm (CRUD), tự động lọc nội dung tin nhắn, ghi log và xem log tin nhắn bị chặn.
-  - **Out-of-scope**: Nhắn tin nhóm, gọi thoại/video, gửi file/hình ảnh, thông báo đẩy (push notification), quản lý hồ sơ cá nhân nâng cao (avatar, bio), xóa tài khoản, quên mật khẩu, thanh toán.
+  - **In-scope**: Đăng ký/đăng nhập (JWT), tìm kiếm người dùng, gửi/chấp nhận/từ chối lời mời kết bạn, nhắn tin 1-1 real-time (WebSocket), quản lý từ khóa cấm (CRUD), tự động lọc nội dung tin nhắn.
+  - **Out-of-scope**: Nhắn tin nhóm, gọi thoại/video, gửi file/hình ảnh, thông báo đẩy (push notification), quản lý hồ sơ cá nhân nâng cao (avatar, bio), xóa tài khoản, quên mật khẩu.
 
 **Process Diagram:**
 
@@ -36,9 +36,7 @@ flowchart TD
     G --> H[User: Gửi tin nhắn]
     H --> I{Hệ thống: Kiểm tra nội dung}
     I -->|Hợp lệ| J[User: Nhận tin nhắn real-time]
-    I -->|Vi phạm| K[Hệ thống: Chặn tin nhắn + Ghi log]
-    K --> L[Admin: Xem log tin nhắn bị chặn]
-    D --> L
+    I -->|Vi phạm| K[Hệ thống: Chặn tin nhắn + Thông báo lỗi]
 ```
 
 **Process Steps:**
@@ -54,7 +52,6 @@ flowchart TD
 | 7 | Gửi tin nhắn | User | User soạn và gửi tin nhắn đến bạn bè |
 | 8 | Tin nhắn bị chặn (nếu vi phạm) | User | Hệ thống thông báo tin nhắn chứa từ khóa cấm, không gửi được |
 | 9 | Nhận tin nhắn real-time | User | User nhận tin nhắn hợp lệ qua WebSocket |
-| 10 | Xem log tin nhắn bị chặn | Admin | Admin xem danh sách các tin nhắn đã bị hệ thống chặn |
 
 ### 1.2 Existing Automation Systems
 
@@ -67,7 +64,7 @@ Non-functional requirements serve as input for identifying Utility Service and M
 | Requirement    | Description |
 |----------------|-------------|
 | Performance    | Tin nhắn phải được gửi/nhận real-time với độ trễ < 500ms thông qua WebSocket. Kiểm tra từ khóa cấm phải xử lý < 100ms mỗi tin nhắn. |
-| Security       | Xác thực bằng JWT token. Mật khẩu được hash (bcrypt). Phân quyền USER/ADMIN. Chỉ Admin được truy cập API quản lý từ khóa cấm và xem log. |
+| Security       | Xác thực bằng JWT token. Mật khẩu được hash (bcrypt). Phân quyền USER/ADMIN. Chỉ Admin được truy cập API quản lý từ khóa cấm. |
 | Scalability    | Mỗi microservice có thể scale độc lập. Message service cần scale nhiều hơn do tải cao nhất. |
 | Availability   | Mỗi service có health check endpoint. Docker restart policy đảm bảo service tự khởi động lại khi lỗi. |
 
@@ -100,10 +97,9 @@ Decompose the process from 1.1 into granular actions. Mark actions unsuitable fo
 | 17 | Soạn tin nhắn | User | User viết nội dung tin nhắn | ❌ — Thao tác thủ công trên UI |
 | 18 | Lọc nội dung tin nhắn | System | Kiểm tra nội dung tin nhắn có chứa từ khóa cấm không | ✅ |
 | 19 | Gửi tin nhắn hợp lệ | System | Lưu tin nhắn vào database và gửi đến người nhận | ✅ |
-| 20 | Chặn tin nhắn vi phạm và ghi log | System | Từ chối gửi, ghi lại nội dung và lý do vào blocked log | ✅ |
+| 20 | Chặn tin nhắn vi phạm | System | Từ chối gửi và thông báo lỗi cho người gửi | ✅ |
 | 21 | Gửi tin nhắn real-time qua WebSocket | System | Đẩy tin nhắn đến người nhận đang online qua WebSocket | ✅ |
 | 22 | Lấy lịch sử tin nhắn | System | Query tin nhắn giữa 2 user, phân trang | ✅ |
-| 23 | Truy vấn log tin nhắn bị chặn | System | Query danh sách tin nhắn đã bị chặn từ database | ✅ |
 
 > Actions marked ❌: Thao tác thủ công trên giao diện (cả User lẫn Admin), không thể đóng gói thành service.
 
@@ -115,7 +111,7 @@ Identify business entities and group reusable (agnostic) actions into Entity Ser
 |--------|-------------------|------------------|
 | User | **user-service** | Tạo tài khoản (2), Xác thực và cấp token (4), Lấy profile (5), Tìm kiếm người dùng (7) |
 | Friend | **friend-service** | Gửi lời mời (8), Lấy danh sách lời mời (9), Chấp nhận lời mời (10), Từ chối lời mời (11), Lấy danh sách bạn bè (12) |
-| Message, BannedWord | **message-service** | Lọc nội dung (18), Gửi tin nhắn hợp lệ (19), Chặn và ghi log (20), Gửi real-time (21), Lấy lịch sử (22), Lưu từ khóa cấm (14), Xóa từ khóa cấm (15), Truy vấn từ khóa cấm (16), Truy vấn log bị chặn (23) |
+| Message, BannedWord | **message-service** | Lọc nội dung (18), Gửi tin nhắn hợp lệ (19), Chặn tin nhắn vi phạm (20), Gửi real-time (21), Lấy lịch sử (22), Lưu từ khóa cấm (14), Xóa từ khóa cấm (15), Truy vấn từ khóa cấm (16) |
 
 ### 2.4 Task Service Candidate
 
@@ -141,7 +137,6 @@ Map entities/processes to REST URI Resources.
 | Friend List | `/api/friends` |
 | Message | `/api/messages` |
 | Banned Word | `/api/moderation/banned-words` |
-| Blocked Message Log | `/api/moderation/blocked-logs` |
 
 ### 2.6 Associate Capabilities with Resources and Methods
 
@@ -162,7 +157,7 @@ Map entities/processes to REST URI Resources.
 | message-service | Thêm từ khóa cấm | `/api/moderation/banned-words` | POST |
 | message-service | Xóa từ khóa cấm | `/api/moderation/banned-words/{id}` | DELETE |
 | message-service | Xem danh sách từ khóa cấm | `/api/moderation/banned-words` | GET |
-| message-service | Xem log tin nhắn bị chặn | `/api/moderation/blocked-logs` | GET |
+
 
 ### 2.7 Utility Service & Microservice Candidates
 
@@ -228,7 +223,6 @@ sequenceDiagram
         MessageService-->>Gateway: 201 Created (message)
         Gateway-->>Client: 201 Created
     else Nội dung vi phạm
-        MessageService->>MessageService: Log blocked message
         MessageService-->>Gateway: 400 Bad Request (message blocked)
         Gateway-->>Client: 400 Bad Request (chứa từ khóa cấm)
     end
@@ -279,7 +273,7 @@ Service Contract specification for each service. Full OpenAPI specs:
 | `/api/moderation/banned-words` | GET | Xem danh sách từ khóa cấm (ADMIN only) | — | 200, 403 |
 | `/api/moderation/banned-words` | POST | Thêm từ khóa cấm (ADMIN only) | `{ word }` | 201, 400, 409 |
 | `/api/moderation/banned-words/{id}` | DELETE | Xóa từ khóa cấm (ADMIN only) | — | 200, 404 |
-| `/api/moderation/blocked-logs` | GET | Xem log tin nhắn bị chặn (ADMIN only) | Query: `?page=1&limit=50` | 200, 403 |
+
 
 ### 3.2 Service Logic Design
 
@@ -346,8 +340,7 @@ flowchart TD
 
     C -->|POST /messages| D[Load banned words from DB]
     D --> E{Content contains banned word?}
-    E -->|Yes| F[Save to blocked_logs table]
-    F --> F1[Return 400 Bad Request - message blocked]
+    E -->|Yes| F1[Return 400 Bad Request - message blocked]
     E -->|No| G[Save message to DB]
     G --> H[Send via WebSocket to receiver]
     H --> I[Return 201 Created]
@@ -361,9 +354,4 @@ flowchart TD
     K2 -->|Yes| K3[Return 409 Conflict]
     K2 -->|No| K4[Save to DB]
     K4 --> K5[Return 201 Created]
-
-    C -->|GET /moderation/blocked-logs| L{Role = ADMIN?}
-    L -->|No| L1[Return 403 Forbidden]
-    L -->|Yes| L2[Query blocked logs from DB]
-    L2 --> L3[Return 200 OK + blocked logs]
 ```
