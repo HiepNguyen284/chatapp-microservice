@@ -1,0 +1,260 @@
+openapi: 3.0.3
+info:
+  title: Friend Service API
+  description: |
+    Handles friend requests (send, accept, reject), received request listing,
+    and friend list retrieval. Part of the ChatApp microservice system.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5002
+    description: Local development
+  - url: http://friend-service:5002
+    description: Docker Compose internal
+
+tags:
+  - name: Health
+    description: Service health check
+  - name: Friend Requests
+    description: Send, accept, reject friend requests
+  - name: Friends
+    description: Friend list management
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/friends/requests:
+    post:
+      tags: [Friend Requests]
+      summary: Gửi lời mời kết bạn
+      operationId: sendFriendRequest
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUserId]
+              properties:
+                targetUserId:
+                  type: integer
+                  description: ID của user muốn kết bạn
+                  example: 2
+      responses:
+        "201":
+          description: Gửi lời mời thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequestResponse"
+        "400":
+          description: Dữ liệu không hợp lệ (ví dụ gửi lời mời cho chính mình)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Lời mời đã tồn tại hoặc đã là bạn bè
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/friends/requests/received:
+    get:
+      tags: [Friend Requests]
+      summary: Lấy danh sách lời mời nhận được
+      operationId: getReceivedRequests
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Danh sách lời mời kết bạn đang chờ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FriendRequestResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/friends/requests/{id}/accept:
+    put:
+      tags: [Friend Requests]
+      summary: Chấp nhận lời mời kết bạn
+      operationId: acceptFriendRequest
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID của friend request
+          schema:
+            type: integer
+            example: 1
+      responses:
+        "200":
+          description: Chấp nhận thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequestResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Không tìm thấy lời mời hoặc không thuộc về user hiện tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/friends/requests/{id}/reject:
+    put:
+      tags: [Friend Requests]
+      summary: Từ chối lời mời kết bạn
+      operationId: rejectFriendRequest
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID của friend request
+          schema:
+            type: integer
+            example: 1
+      responses:
+        "200":
+          description: Từ chối thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequestResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Không tìm thấy lời mời hoặc không thuộc về user hiện tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/friends:
+    get:
+      tags: [Friends]
+      summary: Lấy danh sách bạn bè
+      operationId: getFriendList
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Danh sách bạn bè (các relationship có trạng thái ACCEPTED)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FriendResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token nhận được từ user-service POST /api/auth/login.
+        Payload chứa: { userId, role (USER|ADMIN) }
+
+  schemas:
+    FriendRequestResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        senderId:
+          type: integer
+          example: 1
+        receiverId:
+          type: integer
+          example: 2
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+          example: PENDING
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-14T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-04-14T10:35:00Z"
+
+    FriendResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID của user bạn bè
+          example: 2
+        username:
+          type: string
+          example: janedoe
+        email:
+          type: string
+          format: email
+          example: jane@example.com
+        friendSince:
+          type: string
+          format: date-time
+          description: Thời điểm chấp nhận kết bạn
+          example: "2026-04-14T10:35:00Z"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Not found
+        message:
+          type: string
+          example: Friend request not found or does not belong to you

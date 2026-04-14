@@ -1,0 +1,361 @@
+openapi: 3.0.3
+info:
+  title: Message Service API
+  description: |
+    Handles messaging (send with friendship verification + content filtering,
+    message history), real-time delivery via Socket.io, and banned word management.
+    Part of the ChatApp microservice system.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5003
+    description: Local development
+  - url: http://message-service:5003
+    description: Docker Compose internal
+
+tags:
+  - name: Health
+    description: Service health check
+  - name: Messages
+    description: Send and retrieve messages
+  - name: WebSocket
+    description: Real-time messaging via Socket.io
+  - name: Moderation
+    description: Banned word management (ADMIN only)
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/messages:
+    post:
+      tags: [Messages]
+      summary: Gửi tin nhắn
+      description: |
+        Gửi tin nhắn đến một user khác. Hệ thống tự động:
+        1. Kiểm tra receiver có phải bạn bè không (gọi friend-service)
+        2. Kiểm tra nội dung có chứa từ khóa cấm không
+        3. Nếu hợp lệ, lưu và gửi real-time qua Socket.io
+      operationId: sendMessage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receiverId, content]
+              properties:
+                receiverId:
+                  type: integer
+                  description: ID của user nhận tin nhắn
+                  example: 2
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                  description: Nội dung tin nhắn
+                  example: "Xin chào, bạn khỏe không?"
+      responses:
+        "201":
+          description: Gửi tin nhắn thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Tin nhắn chứa từ khóa cấm hoặc dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Message blocked
+                message: Tin nhắn chứa từ khóa cấm và không được gửi
+        "403":
+          description: Receiver không phải bạn bè
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: Forbidden
+                message: Bạn chỉ có thể gửi tin nhắn cho bạn bè
+
+  /api/messages/{userId}:
+    get:
+      tags: [Messages]
+      summary: Lấy lịch sử tin nhắn với một user
+      operationId: getMessageHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: ID của user muốn xem lịch sử chat
+          schema:
+            type: integer
+            example: 2
+        - name: page
+          in: query
+          required: false
+          description: Số trang (mặc định 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          description: Số tin nhắn mỗi trang (mặc định 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Lịch sử tin nhắn (sắp xếp theo thời gian tăng dần)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MessageResponse"
+                  pagination:
+                    $ref: "#/components/schemas/PaginationResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/moderation/banned-words:
+    get:
+      tags: [Moderation]
+      summary: Xem danh sách từ khóa cấm
+      description: Chỉ ADMIN mới có quyền truy cập
+      operationId: getBannedWords
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Danh sách tất cả từ khóa cấm
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BannedWordResponse"
+        "403":
+          description: Không có quyền ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Moderation]
+      summary: Thêm từ khóa cấm
+      description: Chỉ ADMIN mới có quyền truy cập
+      operationId: addBannedWord
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [word]
+              properties:
+                word:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: Từ hoặc cụm từ cần cấm
+                  example: "spam"
+      responses:
+        "201":
+          description: Thêm từ khóa cấm thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BannedWordResponse"
+        "400":
+          description: Dữ liệu không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Không có quyền ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Từ khóa đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/moderation/banned-words/{id}:
+    delete:
+      tags: [Moderation]
+      summary: Xóa từ khóa cấm
+      description: Chỉ ADMIN mới có quyền truy cập
+      operationId: deleteBannedWord
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID của từ khóa cấm
+          schema:
+            type: integer
+            example: 1
+      responses:
+        "200":
+          description: Xóa thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Banned word deleted successfully
+        "403":
+          description: Không có quyền ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Không tìm thấy từ khóa cấm
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token nhận được từ user-service POST /api/auth/login.
+        Payload chứa: { userId, role (USER|ADMIN) }
+
+  schemas:
+    MessageResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        senderId:
+          type: integer
+          example: 1
+        receiverId:
+          type: integer
+          example: 2
+        content:
+          type: string
+          example: "Xin chào, bạn khỏe không?"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-14T10:30:00Z"
+
+    BannedWordResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        word:
+          type: string
+          example: spam
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-14T10:00:00Z"
+
+    PaginationResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 50
+        totalItems:
+          type: integer
+          example: 120
+        totalPages:
+          type: integer
+          example: 3
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Forbidden
+        message:
+          type: string
+          example: Bạn không có quyền thực hiện hành động này
+
+  x-websocket:
+    description: |
+      ## WebSocket — Real-time Messaging (Socket.io)
+
+      ### Connection
+      ```
+      URL: ws://localhost:8080/socket.io/
+      Transport: WebSocket (with polling fallback)
+      Auth: { token: "<JWT_TOKEN>" }
+      ```
+
+      ### Client Events (client → server)
+      | Event | Payload | Description |
+      |-------|---------|-------------|
+      | `authenticate` | `{ token: string }` | Xác thực kết nối WebSocket bằng JWT token |
+
+      ### Server Events (server → client)
+      | Event | Payload | Description |
+      |-------|---------|-------------|
+      | `new_message` | `MessageResponse` | Tin nhắn mới được gửi đến user |
+      | `error` | `{ message: string }` | Thông báo lỗi |
+
+      ### Flow
+      1. Client kết nối Socket.io với JWT token trong auth options
+      2. Server verify token và join user vào room `user:{userId}`
+      3. Khi có tin nhắn mới (qua POST /api/messages), server emit `new_message` đến room của receiver
+      4. Client lắng nghe event `new_message` để hiển thị tin nhắn real-time

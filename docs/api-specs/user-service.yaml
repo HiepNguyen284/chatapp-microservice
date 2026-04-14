@@ -1,0 +1,221 @@
+openapi: 3.0.3
+info:
+  title: User Service API
+  description: |
+    Handles user registration, authentication (JWT), profile retrieval, and user search.
+    Part of the ChatApp microservice system.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5001
+    description: Local development
+  - url: http://user-service:5001
+    description: Docker Compose internal
+
+tags:
+  - name: Health
+    description: Service health check
+  - name: Auth
+    description: Registration and authentication
+  - name: Users
+    description: User profile and search
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Đăng ký tài khoản mới
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  example: johndoe
+                email:
+                  type: string
+                  format: email
+                  example: john@example.com
+                password:
+                  type: string
+                  minLength: 6
+                  example: "securePass123"
+      responses:
+        "201":
+          description: Tạo tài khoản thành công
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Dữ liệu đầu vào không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Username hoặc email đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Đăng nhập
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  example: johndoe
+                password:
+                  type: string
+                  example: "securePass123"
+      responses:
+        "200":
+          description: Đăng nhập thành công, trả về JWT token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT token chứa userId và role
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Sai username hoặc password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/me:
+    get:
+      tags: [Users]
+      summary: Lấy profile user hiện tại
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Trả về thông tin user hiện tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/search:
+    get:
+      tags: [Users]
+      summary: Tìm kiếm user theo tên hoặc email
+      operationId: searchUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Từ khóa tìm kiếm (tên hoặc email)
+          schema:
+            type: string
+            minLength: 1
+            example: john
+      responses:
+        "200":
+          description: Danh sách user phù hợp
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token nhận được từ POST /api/auth/login.
+        Payload chứa: { userId, role (USER|ADMIN) }
+
+  schemas:
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: johndoe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        role:
+          type: string
+          enum: [USER, ADMIN]
+          example: USER
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-04-14T10:30:00Z"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Validation failed
+        message:
+          type: string
+          example: Username must be at least 3 characters
