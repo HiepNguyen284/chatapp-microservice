@@ -153,7 +153,7 @@ Map entities/processes to REST URI Resources.
 | friend-service | Lấy danh sách bạn bè | `/api/friends` | GET |
 | message-service | Gửi tin nhắn (kiểm tra bạn bè + lọc nội dung) | `/api/messages` | POST |
 | message-service | Lấy lịch sử tin nhắn | `/api/messages/{userId}` | GET |
-| message-service | Nhận tin nhắn real-time | `/ws/messages` | WebSocket |
+| message-service | Nhận tin nhắn real-time | `/socket.io/` | WebSocket (Socket.io) |
 | message-service | Thêm từ khóa cấm | `/api/moderation/banned-words` | POST |
 | message-service | Xóa từ khóa cấm | `/api/moderation/banned-words/{id}` | DELETE |
 | message-service | Xem danh sách từ khóa cấm | `/api/moderation/banned-words` | GET |
@@ -278,7 +278,7 @@ Service Contract specification for each service. Full OpenAPI specs:
 | `/health` | GET | Health check | — | 200 |
 | `/api/messages` | POST | Gửi tin nhắn (JWT required, lọc nội dung; 403 nếu receiver không phải bạn bè) | `{ receiverId, content }` | 201, 400, 403 |
 | `/api/messages/{userId}` | GET | Lấy lịch sử tin nhắn với 1 user (JWT required) | — | 200, 401 |
-| `/ws/messages` | WebSocket | Kết nối WebSocket nhận tin nhắn real-time | — | — |
+| `/socket.io/` | WebSocket | Kết nối Socket.io nhận tin nhắn real-time | — | — |
 | `/api/moderation/banned-words` | GET | Xem danh sách từ khóa cấm (ADMIN only) | — | 200, 403 |
 | `/api/moderation/banned-words` | POST | Thêm từ khóa cấm (ADMIN only) | `{ word }` | 201, 400, 403, 409 |
 | `/api/moderation/banned-words/{id}` | DELETE | Xóa từ khóa cấm (ADMIN only) | — | 200, 403, 404 |
