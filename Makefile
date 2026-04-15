@@ -1,11 +1,6 @@
-# ============================================
-# Makefile — Common project commands
-# Usage: make <target>
-# ============================================
-
 .PHONY: help up down build logs clean init
 
-help: ## Show this help message
+help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
@@ -29,7 +24,7 @@ build: ## Rebuild all containers
 logs: ## Tail logs from all services
 	docker compose logs -f
 
-logs-service: ## Tail logs from a specific service (usage: make logs-service s=service-a)
+logs-service: ## Tail logs from a specific service (usage: make logs-service s=user-service)
 	docker compose logs -f $(s)
 
 clean: ## Remove all containers, volumes, and images
@@ -41,7 +36,5 @@ status: ## Show status of all services
 restart: ## Restart all services
 	docker compose restart
 
-test: ## Run tests (customize per your stack)
-	@echo "Add your test commands here"
-	@echo "Example: docker compose exec service-a npm test"
-	@echo "Example: docker compose exec service-a pytest"
+test: ## Run tests
+	@echo "Example: docker compose exec user-service npm test"

@@ -1,0 +1,154 @@
+services:
+  traefik:
+    image: traefik:v3.0
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+      - "8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./gateway/traefik.yml:/etc/traefik/traefik.yml:ro
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    depends_on:
+      - traefik
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+
+  user-service:
+    build: ./services/user-service
+    environment:
+      - PORT=5001
+      - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_user
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.user-auth.rule=PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.user-auth.priority=10"
+      - "traefik.http.routers.user-auth.entrypoints=web"
+      - "traefik.http.services.user-auth.loadbalancer.server.port=5001"
+      - "traefik.http.routers.user-api.rule=PathPrefix(`/api/users`)"
+      - "traefik.http.routers.user-api.priority=10"
+      - "traefik.http.routers.user-api.entrypoints=web"
+      - "traefik.http.services.user-api.loadbalancer.server.port=5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "/app/healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  friend-service:
+    build: ./services/friend-service
+    environment:
+      - PORT=5002
+      - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_friend
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.friend-api.rule=PathPrefix(`/api/friends`)"
+      - "traefik.http.routers.friend-api.priority=10"
+      - "traefik.http.routers.friend-api.entrypoints=web"
+      - "traefik.http.services.friend-api.loadbalancer.server.port=5002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "/app/healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  message-service:
+    build: ./services/message-service
+    environment:
+      - PORT=5003
+      - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_message
+      - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+      - FRIEND_SERVICE_URL=http://friend-service:5002
+      - REDIS_URL=redis://redis:6379
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.message-api.rule=PathPrefix(`/api/messages`)"
+      - "traefik.http.routers.message-api.priority=10"
+      - "traefik.http.routers.message-api.entrypoints=web"
+      - "traefik.http.services.message-api.loadbalancer.server.port=5003"
+      - "traefik.http.routers.moderation-api.rule=PathPrefix(`/api/moderation`)"
+      - "traefik.http.routers.moderation-api.priority=10"
+      - "traefik.http.routers.moderation-api.entrypoints=web"
+      - "traefik.http.services.moderation-api.loadbalancer.server.port=5003"
+      - "traefik.http.routers.socketio.rule=PathPrefix(`/socket.io`)"
+      - "traefik.http.routers.socketio.priority=10"
+      - "traefik.http.routers.socketio.entrypoints=web"
+      - "traefik.http.services.socketio.loadbalancer.server.port=5003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "/app/healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-chatapp}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      POSTGRES_DB: chatapp
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chatapp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - chatapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks:
+  chatapp-network:
+    driver: bridge
+
+volumes:
+  pg-data:

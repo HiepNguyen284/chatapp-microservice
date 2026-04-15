@@ -1,0 +1,16 @@
+# Traefik static configuration
+api:
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  web:
+    address: ":8080"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: chatapp-network
+
+log:
+  level: INFO
