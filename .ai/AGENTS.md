@@ -10,32 +10,60 @@ You help build, debug, test, document, and deploy a multi-service application.
 
 ```
 frontend/                → Vite + React + TailwindCSS v4 → Caddy (:3000)
-gateway/                 → Traefik v3 Docker provider (:8080)
+gateway/
+  traefik.yml            → Traefik v3 static config (Docker provider)
 services/
   user-service/          → ExpressJS 5 + TypeScript (:5001) — auth, user management
   friend-service/        → ExpressJS 5 + TypeScript (:5002) — friend requests, friend list
   message-service/       → ExpressJS 5 + Socket.io + TypeScript (:5003) — messaging, moderation, WebSocket
 docs/
-  api-specs/             → OpenAPI 3.0 YAML specifications
+  api-specs/             → OpenAPI 3.0 YAML specifications (user-service, friend-service, message-service)
   architecture.md        → System architecture documentation
   analysis-and-design.md → Service analysis and design
-compose.yml              → Container orchestration
+scripts/
+  init-databases.sql     → Creates 3 PostgreSQL databases on first startup
+compose.yml              → Container orchestration (Traefik + 3 services + PostgreSQL + Redis)
 .env.example             → Environment variable template
+.github/workflows/ci.yml → GitHub Actions CI (parallel jobs)
 ```
 
 ## Tech Stack
 
-- **Package manager**: pnpm
-- **Backend**: ExpressJS 5 + TypeScript (tsdown bundler)
-- **Frontend**: Vite + React 19 + TailwindCSS v4
-- **Database**: PostgreSQL 18-alpine (3 databases: chatapp_user, chatapp_friend, chatapp_message)
-- **Cache/Broker**: Redis 8-alpine (@socket.io/redis-adapter)
-- **Gateway**: Traefik v3 (Docker provider, auto-discovery via labels)
-- **Serving**: Caddy (frontend static files)
+| Component | Technology |
+|-----------|-----------|
+| Package manager | pnpm |
+| Backend | ExpressJS 5 + TypeScript (tsdown bundler) |
+| Frontend | Vite + React 19 + TailwindCSS v4 |
+| Database | PostgreSQL 18-alpine (3 databases: chatapp_user, chatapp_friend, chatapp_message) |
+| Cache/Broker | Redis 8-alpine (@socket.io/redis-adapter) |
+| Gateway | Traefik v3 (Docker provider, auto-discovery via container labels) |
+| Static serving | Caddy (frontend build output) |
+| Linting | ESLint 10 + typescript-eslint |
+| Formatting | Prettier 3 (config at root `.prettierrc`, ignore at `.prettierignore`) |
+| Testing | Vitest |
+| CI | GitHub Actions (parallel: frontend + 3 services → Docker build) |
+
+## Traefik Routing
+
+| Path | Target | Priority |
+|------|--------|----------|
+| `/api/auth/*` | user-service:5001 | 10 |
+| `/api/users/*` | user-service:5001 | 10 |
+| `/api/friends/*` | friend-service:5002 | 10 |
+| `/api/messages/*` | message-service:5003 | 10 |
+| `/api/moderation/*` | message-service:5003 | 10 |
+| `/socket.io/*` | message-service:5003 | 10 |
+| `/*` (catch-all) | frontend:3000 | 1 |
+
+## Inter-Service Communication
+
+- **message-service → friend-service**: HTTP REST call to verify friendship before sending messages (`FRIEND_SERVICE_URL=http://friend-service:5002`)
+- All services → **postgres**: TCP via `DATABASE_URL`
+- **message-service → redis**: Pub/Sub via `REDIS_URL` (Socket.io adapter)
 
 ## Core Constraints
 
-1. **Docker-first**: All code runs inside Docker containers. Never suggest running directly on the host.
+1. **Docker-first**: All code runs inside Docker containers.
 2. **Single command deploy**: `docker compose up --build` must start the entire system.
 3. **Database per service**: Each service owns its data. No shared databases.
 4. **Gateway routing**: Client → Traefik → Services. Never bypass the gateway.
@@ -43,7 +71,7 @@ compose.yml              → Container orchestration
 6. **Environment variables**: Use `.env` for config. Never hardcode secrets.
 7. **OpenAPI specs**: All APIs documented in `docs/api-specs/` (OpenAPI 3.0 YAML).
 
-## Testing
+## Testing (MANDATORY)
 
 **Every change MUST include tests.** Follow these rules:
 
@@ -56,19 +84,17 @@ compose.yml              → Container orchestration
 7. **Test coverage**: At minimum, test happy path + one error case per endpoint.
 8. **Do NOT skip failing tests** — fix the code or the test.
 
-### Test Commands
+### Commands
 
 ```bash
-# Run tests for a specific service
-cd services/user-service && pnpm test -- --run
+# In any service directory (e.g., services/user-service):
+pnpm lint              # ESLint
+pnpm format:check      # Prettier check
+pnpm format            # Prettier auto-fix
+pnpm run build         # tsdown build
+pnpm test -- --run     # Vitest (single run, no watch)
 
-# Run lint
-cd services/user-service && pnpm lint
-
-# Run format check
-cd services/user-service && pnpm format:check
-
-# Run all checks (what CI does)
+# Full CI check (what GitHub Actions does):
 pnpm lint && pnpm format:check && pnpm run build && pnpm test -- --run
 ```
 
@@ -80,6 +106,7 @@ pnpm lint && pnpm format:check && pnpm run build && pnpm test -- --run
 - Use strict TypeScript (`"strict": true`)
 - Keep functions small, focused, and well-named
 - Comments explain "why", not "what"
+- Run `pnpm format` before committing to ensure consistent formatting
 
 ## When Creating/Modifying Services
 
@@ -88,7 +115,7 @@ pnpm lint && pnpm format:check && pnpm run build && pnpm test -- --run
 3. Use Docker Compose service names for inter-service calls (e.g., `http://friend-service:5002`)
 4. Update the OpenAPI spec when adding/changing endpoints
 5. **Write or update tests**
-6. Run `pnpm lint && pnpm test -- --run` to verify
+6. Run `pnpm lint && pnpm format:check && pnpm test -- --run` to verify
 7. Verify the Dockerfile builds correctly
 
 ## When Debugging
@@ -96,8 +123,8 @@ pnpm lint && pnpm format:check && pnpm run build && pnpm test -- --run
 1. Check Docker logs: `docker compose logs <service-name>`
 2. Verify network connectivity between services
 3. Check environment variables are properly loaded
-4. Verify port mappings in compose.yml
-5. Test health endpoints first
+4. Verify port mappings and Traefik labels in compose.yml
+5. Test health endpoints first: `curl http://localhost:8080/health`
 
 ## File Conventions
 
@@ -105,10 +132,12 @@ pnpm lint && pnpm format:check && pnpm run build && pnpm test -- --run
 |---------|----------|--------|
 | API specs | `docs/api-specs/<service>.yaml` | OpenAPI 3.0 |
 | Architecture | `docs/architecture.md` | Markdown |
-| Service docs | `<service>/readme.md` | Markdown |
-| Tests | `<service>/src/*.test.ts` | Vitest |
+| Tests | `services/<service>/src/*.test.ts` | Vitest |
+| ESLint config | `services/<service>/eslint.config.mjs` | Flat config |
+| Prettier config | `.prettierrc` (root) | JSON |
+| Prettier ignore | `.prettierignore` (root) | Gitignore syntax |
 | Env config | `.env.example` → `.env` | KEY=VALUE |
-| Diagrams | `docs/asset/` | PNG/SVG/Mermaid |
+| CI | `.github/workflows/ci.yml` | GitHub Actions |
 
 ## Response Format
 
