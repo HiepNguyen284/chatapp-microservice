@@ -52,13 +52,13 @@ Select patterns based on business/technical justifications from your analysis.
 | Pattern | Selected? | Business/Technical Justification |
 |---------|-----------|----------------------------------|
 | API Gateway | ✅ | Traefik đóng vai trò single entry point, reverse proxy, routing dựa trên path prefix. Xử lý cross-cutting concerns: TLS termination, load balancing. JWT authentication được xử lý tại mỗi service thông qua middleware chung (shared library). |
-| Database per Service | ✅ | Mỗi service (user, friend, message) có PostgreSQL database riêng, đảm bảo loose coupling và independent deployability. Thay đổi schema của service này không ảnh hưởng service khác. |
-| Shared Database | ❌ | Không sử dụng — vi phạm nguyên tắc service autonomy. Nếu dùng shared DB, thay đổi schema ảnh hưởng tất cả services. |
+| Database per Service | ✅ | Mỗi service (user, friend, message) có PostgreSQL **database riêng** trong cùng một PostgreSQL instance, đảm bảo **logical isolation** — mỗi service chỉ truy cập database của mình thông qua connection string riêng. Thay đổi schema của service này không ảnh hưởng service khác. Sử dụng chung instance giúp tiết kiệm tài nguyên trong môi trường development/MVP mà vẫn giữ nguyên tắc database-per-service ở mức logical. |
+| Shared Database | ❌ | Không sử dụng shared database (1 DB cho tất cả services) — vi phạm nguyên tắc service autonomy. Mặc dù dùng chung PostgreSQL instance, mỗi service có database riêng biệt, không chia sẻ tables. |
 | Saga | ❌ | Không cần — không có distributed transaction phức tạp. Gửi tin nhắn chỉ cần message-service gọi friend-service kiểm tra bạn bè (synchronous call), không cần compensating transaction. |
-| Event-driven / Message Queue | ❌ | Không sử dụng trong phạm vi hiện tại. Real-time messaging dùng Socket.io (WebSocket) thay vì message broker. Có thể bổ sung RabbitMQ/Kafka trong tương lai nếu cần async inter-service communication. |
+| Event-driven / Message Queue | ✅ | Redis được sử dụng làm **message broker** cho `@socket.io/redis-adapter`. Khi message-service cần scale horizontally (nhiều instances), Redis Pub/Sub đảm bảo tin nhắn WebSocket được broadcast đến tất cả instances — client kết nối đến bất kỳ instance nào cũng nhận được tin nhắn. |
 | CQRS | ❌ | Không cần — read/write patterns của hệ thống đơn giản, không có yêu cầu tách biệt read model và write model. |
 | Circuit Breaker | ❌ | Không áp dụng trong phạm vi MVP. Có thể bổ sung khi scale (ví dụ: message-service gọi friend-service fail → fallback). |
-| Service Registry / Discovery | ❌ | Docker Compose DNS đã cung cấp service discovery tự động. Các service gọi nhau qua tên container (ví dụ: `http://friend-service:5002`). Không cần Consul/Eureka cho deployment đơn giản. |
+| Service Registry / Discovery | ✅ | Traefik Docker provider tự động phát hiện services thông qua Docker container labels. Khi service start/stop/scale, Traefik cập nhật routing table tự động — không cần cấu hình thủ công. Kết hợp với Docker Compose DNS cho inter-service communication nội bộ. |
 
 > Reference: *Microservices Patterns* — Chris Richardson, chapters on decomposition, data management, and communication patterns.
 
@@ -69,13 +69,12 @@ Select patterns based on business/technical justifications from your analysis.
 | Component | Responsibility | Tech Stack | Port |
 |-----------|---------------|------------|------|
 | **Frontend** | Giao diện người dùng: đăng ký, đăng nhập, tìm kiếm bạn bè, nhắn tin real-time, quản lý từ khóa cấm (Admin) | ReactJS | 3000 |
-| **Gateway** | Reverse proxy, routing request đến đúng service dựa trên path prefix, load balancing, health check monitoring | Traefik v3 | 8080 (HTTP), 8081 (Dashboard) |
+| **Gateway** | Reverse proxy, service discovery tự động qua Docker labels, routing request đến đúng service dựa trên path prefix, load balancing, health check monitoring | Traefik v3 (Docker provider) | 8080 (HTTP), 8081 (Dashboard) |
 | **user-service** | Đăng ký, đăng nhập (JWT), lấy profile, tìm kiếm người dùng | ExpressJS (Node.js) | 5001 |
 | **friend-service** | Gửi/chấp nhận/từ chối lời mời kết bạn, lấy danh sách bạn bè | ExpressJS (Node.js) | 5002 |
-| **message-service** | Gửi/nhận tin nhắn (kèm kiểm tra bạn bè + lọc nội dung), WebSocket (Socket.io), quản lý từ khóa cấm | ExpressJS (Node.js) + Socket.io | 5003 |
-| **user-db** | Lưu trữ dữ liệu users (tài khoản, credentials) | PostgreSQL 18 | 5432 |
-| **friend-db** | Lưu trữ dữ liệu friend requests và relationships | PostgreSQL 18 | 5433 |
-| **message-db** | Lưu trữ dữ liệu messages và banned words | PostgreSQL 18 | 5434 |
+| **message-service** | Gửi/nhận tin nhắn (kèm kiểm tra bạn bè + lọc nội dung), WebSocket (Socket.io + Redis adapter), quản lý từ khóa cấm | ExpressJS (Node.js) + Socket.io | 5003 |
+| **postgres** | Lưu trữ dữ liệu cho cả 3 services — 3 databases riêng biệt: `chatapp_user`, `chatapp_friend`, `chatapp_message` trong cùng 1 instance | PostgreSQL 18-alpine | 5432 |
+| **redis** | Message broker cho `@socket.io/redis-adapter` — đồng bộ WebSocket events giữa các message-service instances khi scale horizontally | Redis 8-alpine | 6379 |
 
 ---
 
@@ -83,13 +82,13 @@ Select patterns based on business/technical justifications from your analysis.
 
 ### Inter-service Communication Matrix
 
-| From → To | Frontend | Gateway (Traefik) | user-service | friend-service | message-service | user-db | friend-db | message-db |
-|-----------|----------|-------------------|--------------|----------------|-----------------|---------|-----------|------------|
-| **Frontend** | — | HTTP REST, WebSocket | — | — | — | — | — | — |
-| **Gateway** | — | — | HTTP REST (reverse proxy) | HTTP REST (reverse proxy) | HTTP REST + WebSocket (reverse proxy) | — | — | — |
-| **user-service** | — | — | — | — | — | TCP (pg) | — | — |
-| **friend-service** | — | — | — | — | — | — | TCP (pg) | — |
-| **message-service** | WebSocket (Socket.io) | — | — | HTTP REST (verify friendship) | — | — | — | TCP (pg) |
+| From → To | Frontend | Gateway (Traefik) | user-service | friend-service | message-service | postgres | redis |
+|-----------|----------|-------------------|--------------|----------------|-----------------|----------|-------|
+| **Frontend** | — | HTTP REST, WebSocket | — | — | — | — | — |
+| **Gateway** | — | — | HTTP REST (reverse proxy) | HTTP REST (reverse proxy) | HTTP REST + WebSocket (reverse proxy) | — | — |
+| **user-service** | — | — | — | — | — | TCP (pg → chatapp_user) | — |
+| **friend-service** | — | — | — | — | — | TCP (pg → chatapp_friend) | — |
+| **message-service** | WebSocket (Socket.io) | — | — | HTTP REST (verify friendship) | — | TCP (pg → chatapp_message) | Redis Pub/Sub (Socket.io adapter) |
 
 ### Communication Protocols
 
@@ -97,7 +96,8 @@ Select patterns based on business/technical justifications from your analysis.
 |----------|-------|-------------|
 | HTTP/REST | Client ↔ Gateway ↔ Services | Synchronous request/response cho tất cả API endpoints |
 | WebSocket (Socket.io) | Client ↔ message-service | Real-time bidirectional communication cho nhận tin nhắn. Socket.io cung cấp tự động fallback polling nếu WS không khả dụng |
-| TCP | Services ↔ Databases | PostgreSQL wire protocol, kết nối qua connection pool |
+| TCP (PostgreSQL) | Services ↔ postgres | PostgreSQL wire protocol, mỗi service kết nối đến database riêng trong cùng 1 instance qua connection pool |
+| Redis Pub/Sub | message-service ↔ redis | `@socket.io/redis-adapter` sử dụng Redis Pub/Sub để đồng bộ WebSocket events giữa các message-service instances |
 
 ### Traefik Routing Rules
 
@@ -124,7 +124,7 @@ graph TB
 
     subgraph Docker Compose Network
         subgraph Gateway
-            GW[Traefik v3<br/>:8080]
+            GW[Traefik v3<br/>Docker Provider<br/>:8080]
         end
 
         subgraph Services
@@ -133,10 +133,9 @@ graph TB
             MS[message-service<br/>ExpressJS + Socket.io :5003]
         end
 
-        subgraph Databases
-            UDB[(user-db<br/>PostgreSQL :5432)]
-            FDB[(friend-db<br/>PostgreSQL :5433)]
-            MDB[(message-db<br/>PostgreSQL :5434)]
+        subgraph Infrastructure
+            PG[(postgres<br/>PostgreSQL 18-alpine :5432<br/>chatapp_user / chatapp_friend / chatapp_message)]
+            RD[redis<br/>Redis 8-alpine :6379]
         end
 
         subgraph Frontend
@@ -151,19 +150,27 @@ graph TB
     GW -->|/api/friends/*| FS
     GW -->|/api/messages/*, /api/moderation/*, /socket.io/*| MS
 
+    GW -.->|Docker labels: service discovery| US
+    GW -.->|Docker labels: service discovery| FS
+    GW -.->|Docker labels: service discovery| MS
+
     MS -.->|HTTP: verify friendship| FS
 
-    US --- UDB
-    FS --- FDB
-    MS --- MDB
+    US --- |chatapp_user| PG
+    FS --- |chatapp_friend| PG
+    MS --- |chatapp_message| PG
+
+    MS ---|Pub/Sub: socket.io adapter| RD
 
     MS -.->|Socket.io| U
 ```
 
 > **Ghi chú:**
 > - Đường nét liền (→) = synchronous HTTP request
-> - Đường nét đứt (-.->)  = inter-service call hoặc WebSocket
+> - Đường nét đứt (-.->)  = inter-service call, WebSocket, hoặc service discovery
+> - Đường nét liền không mũi tên (---) = kết nối infrastructure (database, Redis)
 > - Frontend (React) được serve qua Traefik hoặc trực tiếp qua port 3000
+> - Traefik tự động phát hiện services thông qua Docker container labels (không cần cấu hình routing thủ công)
 
 ---
 
@@ -181,26 +188,50 @@ graph TB
 |---------|--------------|------------|----------------|
 | traefik | `traefik:v3.0` | — | `unless-stopped` |
 | frontend | Build `./frontend` | traefik | `unless-stopped` |
-| user-service | Build `./services/user-service` | user-db | `unless-stopped` |
-| friend-service | Build `./services/friend-service` | friend-db | `unless-stopped` |
-| message-service | Build `./services/message-service` | message-db | `unless-stopped` |
-| user-db | `postgres:18` | — | `unless-stopped` |
-| friend-db | `postgres:18` | — | `unless-stopped` |
-| message-db | `postgres:18` | — | `unless-stopped` |
+| user-service | Build `./services/user-service` | postgres (healthy) | `unless-stopped` |
+| friend-service | Build `./services/friend-service` | postgres (healthy) | `unless-stopped` |
+| message-service | Build `./services/message-service` | postgres (healthy), redis (healthy) | `unless-stopped` |
+| postgres | `postgres:18-alpine` | — | `unless-stopped` |
+| redis | `redis:8-alpine` | — | `unless-stopped` |
+
+> **Shared PostgreSQL instance:** 1 container PostgreSQL chạy 3 databases riêng biệt (`chatapp_user`, `chatapp_friend`, `chatapp_message`). Databases được tạo tự động bởi init script (`scripts/init-databases.sh`) mount vào `/docker-entrypoint-initdb.d/`. Mỗi service kết nối đến database riêng thông qua `DATABASE_URL` khác nhau.
+
+### Service Discovery (Traefik Docker Provider)
+
+Traefik sử dụng **Docker provider** để tự động phát hiện services thông qua container labels. Khi service start, stop, hoặc scale, Traefik cập nhật routing table tự động — không cần file cấu hình routing thủ công.
+
+Ví dụ labels trên mỗi service container:
+
+```yaml
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.<name>.rule=PathPrefix(`/api/...`)"
+  - "traefik.http.services.<name>.loadbalancer.server.port=<port>"
+```
 
 ### Environment Variables
 
 | Variable | Service | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | user/friend/message-service | PostgreSQL connection string |
+| `DATABASE_URL` | user/friend/message-service | PostgreSQL connection string, mỗi service trỏ đến database riêng (ví dụ: `postgresql://chatapp:secret@postgres:5432/chatapp_user`) |
 | `JWT_SECRET` | user/friend/message-service | Shared secret cho JWT token verification |
 | `PORT` | all services | Port mà service lắng nghe |
 | `FRIEND_SERVICE_URL` | message-service | URL nội bộ đến friend-service (ví dụ: `http://friend-service:5002`) |
+| `REDIS_URL` | message-service | Redis connection string cho `@socket.io/redis-adapter` (ví dụ: `redis://redis:6379`) |
+| `POSTGRES_USER` | postgres | PostgreSQL superuser username |
+| `POSTGRES_PASSWORD` | postgres | PostgreSQL superuser password |
+| `POSTGRES_DB` | postgres | Default database (được tạo tự động bởi image) |
 
 ### Health Checks
 
-Mỗi service expose `GET /health` → `{ "status": "ok" }`. Traefik sử dụng endpoint này để kiểm tra service availability và tự động routing chỉ đến healthy instances.
+| Service | Health Check | Interval |
+|---------|-------------|----------|
+| user/friend/message-service | `GET /health` → `{ "status": "ok" }` | Traefik tự động check |
+| postgres | `pg_isready -U $POSTGRES_USER` | 5s, 5 retries |
+| redis | `redis-cli ping` | 5s, 5 retries |
+
+Traefik sử dụng Docker health status để xác định service availability và tự động routing chỉ đến healthy instances.
 
 ### Network
 
-Tất cả containers cùng chung một Docker Compose network (`chatapp-network`), cho phép giao tiếp nội bộ qua tên service (Docker DNS).
+Tất cả containers cùng chung một Docker Compose network (`chatapp-network`), cho phép giao tiếp nội bộ qua tên service (Docker DNS). Traefik bổ sung thêm khả năng service discovery tự động qua Docker labels.
