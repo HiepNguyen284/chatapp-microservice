@@ -1,5 +1,7 @@
 # GitHub Copilot — Custom Instructions
-# Full project rules: .ai/AGENTS.md
+
+> **Single source of truth: [`.ai/AGENTS.md`](../.ai/AGENTS.md)**
+> This file is a summary. See `.ai/AGENTS.md` for full project rules, architecture, and testing requirements.
 
 ## Project
 
