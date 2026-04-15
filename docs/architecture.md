@@ -68,8 +68,8 @@ Select patterns based on business/technical justifications from your analysis.
 
 | Component | Responsibility | Tech Stack | Port |
 |-----------|---------------|------------|------|
-| **Frontend** | Giao diện người dùng: đăng ký, đăng nhập, tìm kiếm bạn bè, nhắn tin real-time, quản lý từ khóa cấm (Admin) | ReactJS | 3000 |
-| **Gateway** | Reverse proxy, service discovery tự động qua Docker labels, routing request đến đúng service dựa trên path prefix, load balancing, health check monitoring | Traefik v3 (Docker provider) | 8080 (HTTP), 8081 (Dashboard) |
+| **Frontend** | Giao diện người dùng: đăng ký, đăng nhập, tìm kiếm bạn bè, nhắn tin real-time, quản lý từ khóa cấm (Admin). Caddy serve static files (React build output) | ReactJS + Caddy (static file server) | 3000 |
+| **Gateway** | Single entry point cho toàn bộ hệ thống (cả static files lẫn API + WebSocket). Reverse proxy, service discovery tự động qua Docker labels, routing dựa trên path prefix, load balancing, health check | Traefik v3 (Docker provider) | 8080 (HTTP), 8081 (Dashboard) |
 | **user-service** | Đăng ký, đăng nhập (JWT), lấy profile, tìm kiếm người dùng | ExpressJS (Node.js) | 5001 |
 | **friend-service** | Gửi/chấp nhận/từ chối lời mời kết bạn, lấy danh sách bạn bè | ExpressJS (Node.js) | 5002 |
 | **message-service** | Gửi/nhận tin nhắn (kèm kiểm tra bạn bè + lọc nội dung), WebSocket (Socket.io + Redis adapter), quản lý từ khóa cấm | ExpressJS (Node.js) + Socket.io | 5003 |
@@ -82,33 +82,37 @@ Select patterns based on business/technical justifications from your analysis.
 
 ### Inter-service Communication Matrix
 
-| From → To | Frontend | Gateway (Traefik) | user-service | friend-service | message-service | postgres | redis |
-|-----------|----------|-------------------|--------------|----------------|-----------------|----------|-------|
-| **Frontend** | — | HTTP REST, WebSocket | — | — | — | — | — |
-| **Gateway** | — | — | HTTP REST (reverse proxy) | HTTP REST (reverse proxy) | HTTP REST + WebSocket (reverse proxy) | — | — |
+| From → To | Frontend (Caddy) | Gateway (Traefik) | user-service | friend-service | message-service | postgres | redis |
+|-----------|-----------------|-------------------|--------------|----------------|-----------------|----------|-------|
+| **Client** | — | HTTP REST + WebSocket (single entry point) | — | — | — | — | — |
+| **Gateway** | HTTP (reverse proxy static files) | — | HTTP REST (reverse proxy) | HTTP REST (reverse proxy) | HTTP REST + WebSocket (reverse proxy) | — | — |
 | **user-service** | — | — | — | — | — | TCP (pg → chatapp_user) | — |
 | **friend-service** | — | — | — | — | — | TCP (pg → chatapp_friend) | — |
-| **message-service** | WebSocket (Socket.io) | — | — | HTTP REST (verify friendship) | — | TCP (pg → chatapp_message) | Redis Pub/Sub (Socket.io adapter) |
+| **message-service** | — | — | — | HTTP REST (verify friendship) | — | TCP (pg → chatapp_message) | Redis Pub/Sub (Socket.io adapter) |
+
+> **Lưu ý:** Client chỉ giao tiếp với Traefik (port 8080). Traefik proxy static files đến Caddy (Frontend) và proxy API/WebSocket đến backend services. Socket.io WebSocket connection đi qua Traefik (`/socket.io/*` → message-service).
 
 ### Communication Protocols
 
 | Protocol | Usage | Description |
 |----------|-------|-------------|
 | HTTP/REST | Client ↔ Gateway ↔ Services | Synchronous request/response cho tất cả API endpoints |
-| WebSocket (Socket.io) | Client ↔ message-service | Real-time bidirectional communication cho nhận tin nhắn. Socket.io cung cấp tự động fallback polling nếu WS không khả dụng |
+| HTTP (static) | Gateway ↔ Frontend (Caddy) | Traefik proxy request đến Caddy để serve React static files (HTML, JS, CSS) |
+| WebSocket (Socket.io) | Client ↔ Gateway ↔ message-service | Real-time bidirectional communication cho nhận tin nhắn. WebSocket connection đi qua Traefik — client kết nối vào cùng port 8080, Traefik route `/socket.io/*` đến message-service. Socket.io cung cấp tự động fallback polling nếu WS không khả dụng |
 | TCP (PostgreSQL) | Services ↔ postgres | PostgreSQL wire protocol, mỗi service kết nối đến database riêng trong cùng 1 instance qua connection pool |
 | Redis Pub/Sub | message-service ↔ redis | `@socket.io/redis-adapter` sử dụng Redis Pub/Sub để đồng bộ WebSocket events giữa các message-service instances |
 
 ### Traefik Routing Rules
 
-| Path Prefix | Target Service | Strip Prefix? |
-|-------------|---------------|---------------|
-| `/api/auth/*` | user-service:5001 | No |
-| `/api/users/*` | user-service:5001 | No |
-| `/api/friends/*` | friend-service:5002 | No |
-| `/api/messages/*` | message-service:5003 | No |
-| `/api/moderation/*` | message-service:5003 | No |
-| `/socket.io/*` | message-service:5003 | No |
+| Path Prefix | Target Service | Priority | Strip Prefix? | Ghi chú |
+|-------------|---------------|----------|---------------|----------|
+| `/api/auth/*` | user-service:5001 | 10 | No | |
+| `/api/users/*` | user-service:5001 | 10 | No | |
+| `/api/friends/*` | friend-service:5002 | 10 | No | |
+| `/api/messages/*` | message-service:5003 | 10 | No | |
+| `/api/moderation/*` | message-service:5003 | 10 | No | |
+| `/socket.io/*` | message-service:5003 | 10 | No | WebSocket upgrade |
+| `/*` (catch-all) | frontend:3000 (Caddy) | 1 | No | Static files (React SPA) |
 
 ---
 
@@ -127,6 +131,10 @@ graph TB
             GW[Traefik v3<br/>Docker Provider<br/>:8080]
         end
 
+        subgraph Frontend
+            FE[Caddy<br/>React static files :3000]
+        end
+
         subgraph Services
             US[user-service<br/>ExpressJS :5001]
             FS[friend-service<br/>ExpressJS :5002]
@@ -137,22 +145,14 @@ graph TB
             PG[(postgres<br/>PostgreSQL 18-alpine :5432<br/>chatapp_user / chatapp_friend / chatapp_message)]
             RD[redis<br/>Redis 8-alpine :6379]
         end
-
-        subgraph Frontend
-            FE[React App<br/>:3000]
-        end
     end
 
-    U -->|HTTP| FE
-    U -->|HTTP REST + WebSocket| GW
+    U -->|HTTP + WebSocket :8080| GW
 
+    GW -->|catch-all /*| FE
     GW -->|/api/auth/*, /api/users/*| US
     GW -->|/api/friends/*| FS
     GW -->|/api/messages/*, /api/moderation/*, /socket.io/*| MS
-
-    GW -.->|Docker labels: service discovery| US
-    GW -.->|Docker labels: service discovery| FS
-    GW -.->|Docker labels: service discovery| MS
 
     MS -.->|HTTP: verify friendship| FS
 
@@ -161,15 +161,15 @@ graph TB
     MS --- |chatapp_message| PG
 
     MS ---|Pub/Sub: socket.io adapter| RD
-
-    MS -.->|Socket.io| U
 ```
 
 > **Ghi chú:**
-> - Đường nét liền (→) = synchronous HTTP request
-> - Đường nét đứt (-.->)  = inter-service call, WebSocket, hoặc service discovery
+> - **Client chỉ kết nối vào Traefik (port 8080)** — tất cả traffic (static files, REST API, WebSocket) đều đi qua single entry point
+> - Đường nét liền (→) = synchronous HTTP/WebSocket request
+> - Đường nét đứt (-.->)  = inter-service call nội bộ
 > - Đường nét liền không mũi tên (---) = kết nối infrastructure (database, Redis)
-> - Frontend (React) được serve qua Traefik hoặc trực tiếp qua port 3000
+> - Traefik route `/socket.io/*` đến message-service — WebSocket connection upgrade được xử lý tự động
+> - Traefik route `/*` (catch-all, priority thấp) đến Caddy để serve React static files
 > - Traefik tự động phát hiện services thông qua Docker container labels (không cần cấu hình routing thủ công)
 
 ---
@@ -187,7 +187,7 @@ graph TB
 | Service | Image / Build | Depends On | Restart Policy |
 |---------|--------------|------------|----------------|
 | traefik | `traefik:v3.0` | — | `unless-stopped` |
-| frontend | Build `./frontend` | traefik | `unless-stopped` |
+| frontend | Build `./frontend` (Caddy + React build) | traefik | `unless-stopped` |
 | user-service | Build `./services/user-service` | postgres (healthy) | `unless-stopped` |
 | friend-service | Build `./services/friend-service` | postgres (healthy) | `unless-stopped` |
 | message-service | Build `./services/message-service` | postgres (healthy), redis (healthy) | `unless-stopped` |
