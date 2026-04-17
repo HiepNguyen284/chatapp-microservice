@@ -71,7 +71,7 @@ Select patterns based on business/technical justifications from your analysis.
 | **Frontend** | Giao diện người dùng: đăng ký, đăng nhập, tìm kiếm bạn bè, nhắn tin real-time, quản lý từ khóa cấm (Admin). Caddy serve static files (React build output) | ReactJS + Caddy (static file server) | 3000 |
 | **Gateway** | Single entry point cho toàn bộ hệ thống (cả static files lẫn API + WebSocket). Reverse proxy, service discovery tự động qua Docker labels, routing dựa trên path prefix, load balancing, health check | Traefik v3 (Docker provider) | 8080 (HTTP), 8081 (Dashboard) |
 | **user-service** | Đăng ký, đăng nhập (JWT), lấy profile, tìm kiếm người dùng | ExpressJS (Node.js) | 5001 |
-| **friend-service** | Gửi/chấp nhận/từ chối lời mời kết bạn, lấy danh sách bạn bè | ExpressJS (Node.js) | 5002 |
+| **friend-service** | Gửi/chấp nhận/từ chối lời mời kết bạn, lấy danh sách bạn bè, kiểm tra quan hệ bạn bè (internal API) | ExpressJS (Node.js) | 5002 |
 | **message-service** | Gửi/nhận tin nhắn (kèm kiểm tra bạn bè + lọc nội dung), WebSocket (Socket.io + Redis adapter), quản lý từ khóa cấm | ExpressJS (Node.js) + Socket.io | 5003 |
 | **postgres** | Lưu trữ dữ liệu cho cả 3 services — 3 databases riêng biệt: `chatapp_user`, `chatapp_friend`, `chatapp_message` trong cùng 1 instance | PostgreSQL 18-alpine | 5432 |
 | **redis** | Message broker cho `@socket.io/redis-adapter` — đồng bộ WebSocket events giữa các message-service instances khi scale horizontally | Redis 8-alpine | 6379 |

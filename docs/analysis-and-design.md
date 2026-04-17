@@ -120,11 +120,11 @@ Group process-specific (non-agnostic) actions into a Task Service Candidate.
 
 | Non-agnostic Action | Task Service Candidate |
 |---------------------|------------------------|
-| Điều phối đăng nhập → phân quyền → routing | **API Gateway** (đóng vai trò Task Service) |
-| Xác thực JWT token trên mỗi request | **API Gateway** — middleware xác thực |
-| Kiểm tra quyền ADMIN trước khi truy cập API quản trị | **API Gateway** — middleware phân quyền |
+| Điều phối request từ client → routing đến đúng service | **API Gateway (Traefik)** — reverse proxy, service discovery, load balancing |
+| Xác thực JWT token trên mỗi request | **Shared middleware** — mỗi service tự verify JWT qua middleware chung (shared library) |
+| Kiểm tra quyền ADMIN trước khi truy cập API quản trị | **Shared middleware** — mỗi service tự kiểm tra role trong JWT payload |
 
-> API Gateway đảm nhận vai trò Task Service: điều phối request từ client đến đúng entity service, xác thực token và kiểm tra quyền trước khi forward.
+> API Gateway (Traefik) đóng vai trò Task Service cho routing và load balancing. Xác thực JWT và phân quyền được xử lý tại mỗi service thông qua shared middleware — đảm bảo mỗi service tự chủ trong việc xác thực, không phụ thuộc vào gateway.
 
 ### 2.5 Identify Resources
 
