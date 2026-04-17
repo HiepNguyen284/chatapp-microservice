@@ -337,25 +337,29 @@ components:
       ## WebSocket — Real-time Messaging (Socket.io)
 
       ### Connection
-      ```
-      URL: ws://localhost:8080/socket.io/
-      Transport: WebSocket (with polling fallback)
-      Auth: { token: "<JWT_TOKEN>" }
+      Xác thực được thực hiện tại thời điểm kết nối thông qua Socket.io `auth` option.
+      Server verify JWT token và tự động join user vào room — không cần emit event xác thực riêng.
+
+      ```javascript
+      // Client example (Socket.io v4)
+      const socket = io("ws://localhost:8080", {
+        auth: { token: "<JWT_TOKEN>" }
+      });
       ```
 
-      ### Client Events (client → server)
-      | Event | Payload | Description |
-      |-------|---------|-------------|
-      | `authenticate` | `{ token: string }` | Xác thực kết nối WebSocket bằng JWT token |
+      | Parameter | Type | Required | Description |
+      |-----------|------|----------|-------------|
+      | `auth.token` | `string` | ✅ | JWT token nhận từ POST /api/auth/login |
 
       ### Server Events (server → client)
       | Event | Payload | Description |
       |-------|---------|-------------|
       | `new_message` | `MessageResponse` | Tin nhắn mới được gửi đến user |
-      | `error` | `{ message: string }` | Thông báo lỗi |
+      | `error` | `{ message: string }` | Thông báo lỗi (bao gồm lỗi xác thực) |
 
       ### Flow
-      1. Client kết nối Socket.io với JWT token trong auth options
-      2. Server verify token và join user vào room `user:{userId}`
-      3. Khi có tin nhắn mới (qua POST /api/messages), server emit `new_message` đến room của receiver
-      4. Client lắng nghe event `new_message` để hiển thị tin nhắn real-time
+      1. Client kết nối Socket.io với JWT token trong `auth` option
+      2. Server middleware verify token — nếu không hợp lệ, emit `error` và ngắt kết nối
+      3. Server join user vào room `user:{userId}`
+      4. Khi có tin nhắn mới (qua POST /api/messages), server emit `new_message` đến room của receiver
+      5. Client lắng nghe event `new_message` để hiển thị tin nhắn real-time

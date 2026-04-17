@@ -112,7 +112,12 @@ Select patterns based on business/technical justifications from your analysis.
 | `/api/messages/*` | message-service:5003 | 10 | No | |
 | `/api/moderation/*` | message-service:5003 | 10 | No | |
 | `/socket.io/*` | message-service:5003 | 10 | No | WebSocket upgrade |
+| `/health/user` | user-service:5001 | 10 | ReplacePath(`/health`) | Health check |
+| `/health/friend` | friend-service:5002 | 10 | ReplacePath(`/health`) | Health check |
+| `/health/message` | message-service:5003 | 10 | ReplacePath(`/health`) | Health check |
 | `/*` (catch-all) | frontend:3000 (Caddy) | 1 | No | Static files (React SPA) |
+
+> **Health Check qua Gateway:** Mỗi service expose `GET /health` nội bộ. Traefik sử dụng middleware `ReplacePath` để route `/health/{service-name}` đến endpoint `/health` tương ứng. Ví dụ: `curl http://localhost:8080/health/user` → user-service `/health`. Ngoài ra, Docker healthcheck cũng kiểm tra health nội bộ (xem §5 Deployment).
 
 ---
 

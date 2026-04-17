@@ -100,6 +100,7 @@ Decompose the process from 1.1 into granular actions. Mark actions unsuitable fo
 | 20 | Chặn tin nhắn vi phạm | System | Từ chối gửi và thông báo lỗi cho người gửi | ✅ |
 | 21 | Gửi tin nhắn real-time qua WebSocket | System | Đẩy tin nhắn đến người nhận đang online qua WebSocket | ✅ |
 | 22 | Lấy lịch sử tin nhắn | System | Query tin nhắn giữa 2 user, phân trang | ✅ |
+| 23 | Kiểm tra quan hệ bạn bè giữa 2 user | System | Xác minh 2 user có phải bạn bè không (inter-service call từ message-service) | ✅ |
 
 > Actions marked ❌: Thao tác thủ công trên giao diện (cả User lẫn Admin), không thể đóng gói thành service.
 
@@ -110,7 +111,7 @@ Identify business entities and group reusable (agnostic) actions into Entity Ser
 | Entity | Service Candidate | Agnostic Actions |
 |--------|-------------------|------------------|
 | User | **user-service** | Tạo tài khoản (2), Xác thực và cấp token (4), Lấy profile (5), Tìm kiếm người dùng (7) |
-| Friend | **friend-service** | Gửi lời mời (8), Lấy danh sách lời mời (9), Chấp nhận lời mời (10), Từ chối lời mời (11), Lấy danh sách bạn bè (12) |
+| Friend | **friend-service** | Gửi lời mời (8), Lấy danh sách lời mời (9), Chấp nhận lời mời (10), Từ chối lời mời (11), Lấy danh sách bạn bè (12), Kiểm tra quan hệ bạn bè (23) |
 | Message, BannedWord | **message-service** | Lọc nội dung (18), Gửi tin nhắn hợp lệ (19), Chặn tin nhắn vi phạm (20), Gửi real-time (21), Lấy lịch sử (22), Lưu từ khóa cấm (14), Xóa từ khóa cấm (15), Truy vấn từ khóa cấm (16) |
 
 ### 2.4 Task Service Candidate
@@ -151,6 +152,7 @@ Map entities/processes to REST URI Resources.
 | friend-service | Chấp nhận lời mời | `/api/friends/requests/{id}/accept` | PUT |
 | friend-service | Từ chối lời mời | `/api/friends/requests/{id}/reject` | PUT |
 | friend-service | Lấy danh sách bạn bè | `/api/friends` | GET |
+| friend-service | Kiểm tra quan hệ bạn bè (internal) | `/api/friends/check?userId1={id1}&userId2={id2}` | GET |
 | message-service | Gửi tin nhắn (kiểm tra bạn bè + lọc nội dung) | `/api/messages` | POST |
 | message-service | Lấy lịch sử tin nhắn | `/api/messages/{userId}` | GET |
 | message-service | Nhận tin nhắn real-time | `/socket.io/` | WebSocket (Socket.io) |
@@ -270,6 +272,7 @@ Service Contract specification for each service. Full OpenAPI specs:
 | `/api/friends/requests/{id}/accept` | PUT | Chấp nhận lời mời (JWT required) | — | 200, 401, 404 |
 | `/api/friends/requests/{id}/reject` | PUT | Từ chối lời mời (JWT required) | — | 200, 401, 404 |
 | `/api/friends` | GET | Lấy danh sách bạn bè (JWT required) | — | 200, 401 |
+| `/api/friends/check` | GET | Kiểm tra 2 user có phải bạn bè không (internal, JWT required) | Query: `?userId1={id1}&userId2={id2}` | 200, 400, 401 |
 
 **Message service:**
 
@@ -343,6 +346,12 @@ flowchart TD
 
     C -->|GET /friends| G[Query ACCEPTED relationships]
     G --> G1[Return 200 OK + friend list]
+
+    C -->|GET /friends/check| I{userId1 and userId2 provided?}
+    I -->|No| I1[Return 400 Bad Request]
+    I -->|Yes| I2{ACCEPTED relationship exists?}
+    I2 -->|Yes| I3[Return 200 OK + isFriend: true]
+    I2 -->|No| I4[Return 200 OK + isFriend: false]
 ```
 
 **Message service:**

@@ -193,6 +193,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/friends/check:
+    get:
+      tags: [Friends]
+      summary: Kiểm tra quan hệ bạn bè giữa 2 user (internal)
+      description: |
+        Internal API dùng bởi message-service để xác minh 2 user có phải bạn bè không
+        trước khi cho phép gửi tin nhắn.
+      operationId: checkFriendship
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId1
+          in: query
+          required: true
+          description: ID của user thứ nhất
+          schema:
+            type: integer
+            example: 1
+        - name: userId2
+          in: query
+          required: true
+          description: ID của user thứ hai
+          schema:
+            type: integer
+            example: 2
+      responses:
+        "200":
+          description: Kết quả kiểm tra quan hệ bạn bè
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isFriend:
+                    type: boolean
+                    description: true nếu 2 user là bạn bè (ACCEPTED), false nếu không
+                    example: true
+        "400":
+          description: Thiếu userId1 hoặc userId2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Token không hợp lệ hoặc hết hạn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     BearerAuth:

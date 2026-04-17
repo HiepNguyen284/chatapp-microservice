@@ -41,6 +41,12 @@ services:
       - "traefik.http.routers.user-api.priority=10"
       - "traefik.http.routers.user-api.entrypoints=web"
       - "traefik.http.services.user-api.loadbalancer.server.port=5001"
+      - "traefik.http.routers.user-health.rule=Path(`/health/user`)"
+      - "traefik.http.routers.user-health.priority=10"
+      - "traefik.http.routers.user-health.entrypoints=web"
+      - "traefik.http.routers.user-health.service=user-auth"
+      - "traefik.http.routers.user-health.middlewares=user-health-path"
+      - "traefik.http.middlewares.user-health-path.replacepath.path=/health"
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,6 +71,12 @@ services:
       - "traefik.http.routers.friend-api.priority=10"
       - "traefik.http.routers.friend-api.entrypoints=web"
       - "traefik.http.services.friend-api.loadbalancer.server.port=5002"
+      - "traefik.http.routers.friend-health.rule=Path(`/health/friend`)"
+      - "traefik.http.routers.friend-health.priority=10"
+      - "traefik.http.routers.friend-health.entrypoints=web"
+      - "traefik.http.routers.friend-health.service=friend-api"
+      - "traefik.http.routers.friend-health.middlewares=friend-health-path"
+      - "traefik.http.middlewares.friend-health-path.replacepath.path=/health"
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,6 +111,12 @@ services:
       - "traefik.http.routers.socketio.priority=10"
       - "traefik.http.routers.socketio.entrypoints=web"
       - "traefik.http.services.socketio.loadbalancer.server.port=5003"
+      - "traefik.http.routers.message-health.rule=Path(`/health/message`)"
+      - "traefik.http.routers.message-health.priority=10"
+      - "traefik.http.routers.message-health.entrypoints=web"
+      - "traefik.http.routers.message-health.service=message-api"
+      - "traefik.http.routers.message-health.middlewares=message-health-path"
+      - "traefik.http.middlewares.message-health-path.replacepath.path=/health"
     depends_on:
       postgres:
         condition: service_healthy
