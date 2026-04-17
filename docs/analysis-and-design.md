@@ -166,7 +166,7 @@ Based on Non-Functional Requirements (1.3) and Processing Requirements, identify
 
 | Candidate | Type (Utility / Microservice) | Justification |
 |-----------|-------------------------------|---------------|
-| Authentication & Authorization (JWT) | Utility (trong API Gateway) | Cross-cutting concern: mọi request đều cần xác thực. Xử lý tại gateway để các service không cần duplicate logic auth. |
+| Authentication & Authorization (JWT) | Utility (shared middleware) | Cross-cutting concern: mọi request đều cần xác thực. Triển khai dưới dạng shared middleware — mỗi service tự verify JWT token và kiểm tra role, đảm bảo service autonomy. |
 | Content Filter | Microservice (trong message-service) | Yêu cầu performance cao (< 100ms mỗi tin nhắn). Cần scale độc lập theo tải messaging. Logic lọc nội dung gắn chặt với message processing. |
 | WebSocket Notification | Microservice (trong message-service) | Yêu cầu availability cao và real-time. Stateful connection cần quản lý riêng. |
 
@@ -196,28 +196,28 @@ sequenceDiagram
     Gateway-->>Client: 200 OK (JWT token)
 
     Client->>Gateway: GET /api/users/search?q=keyword (JWT)
-    Gateway->>Gateway: Validate JWT token
-    Gateway->>UserService: Forward search request
+    Gateway->>UserService: Forward request
+    UserService->>UserService: Validate JWT token
     UserService-->>Gateway: 200 OK (list of users)
     Gateway-->>Client: 200 OK (list of users)
 
     Client->>Gateway: POST /api/friends/requests (targetUserId, JWT)
-    Gateway->>Gateway: Validate JWT token
-    Gateway->>FriendService: Forward friend request
+    Gateway->>FriendService: Forward request
+    FriendService->>FriendService: Validate JWT token
     FriendService->>FriendService: Create PENDING request
     FriendService-->>Gateway: 201 Created
     Gateway-->>Client: 201 Created
 
     Client->>Gateway: PUT /api/friends/requests/{id}/accept (JWT)
-    Gateway->>Gateway: Validate JWT token
-    Gateway->>FriendService: Forward accept request
+    Gateway->>FriendService: Forward request
+    FriendService->>FriendService: Validate JWT token
     FriendService->>FriendService: Update status to ACCEPTED
     FriendService-->>Gateway: 200 OK
     Gateway-->>Client: 200 OK
 
     Client->>Gateway: POST /api/messages (receiverId, content, JWT)
-    Gateway->>Gateway: Validate JWT token
-    Gateway->>MessageService: Forward send message request
+    Gateway->>MessageService: Forward request
+    MessageService->>MessageService: Validate JWT token
     MessageService->>FriendService: Verify friendship (senderId, receiverId)
 
     alt Không phải bạn bè
