@@ -194,7 +194,7 @@ graph TB
 | postgres | `postgres:18-alpine` | — | `unless-stopped` |
 | redis | `redis:8-alpine` | — | `unless-stopped` |
 
-> **Shared PostgreSQL instance:** 1 container PostgreSQL chạy 3 databases riêng biệt (`chatapp_user`, `chatapp_friend`, `chatapp_message`). Databases được tạo tự động bởi init script (`scripts/init-databases.sh`) mount vào `/docker-entrypoint-initdb.d/`. Mỗi service kết nối đến database riêng thông qua `DATABASE_URL` khác nhau.
+> **Shared PostgreSQL instance:** 1 container PostgreSQL chạy 3 databases riêng biệt (`chatapp_user`, `chatapp_friend`, `chatapp_message`). Databases được tạo tự động bởi init script (`scripts/init-databases.sql`) mount vào `/docker-entrypoint-initdb.d/`. Mỗi service kết nối đến database riêng thông qua `DATABASE_URL` khác nhau.
 
 ### Service Discovery (Traefik Docker Provider)
 

@@ -6,6 +6,8 @@ api:
 entryPoints:
   web:
     address: ":8080"
+  dashboard:
+    address: ":8081"
 
 providers:
   docker:
