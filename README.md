@@ -53,7 +53,26 @@ graph LR
 docker compose up --build
 ```
 
-Verify: `curl http://localhost:8080/health`
+Verify: `curl http://localhost:8080/health/user`
+
+### Container engine note (Traefik socket)
+
+This project uses Traefik Docker provider, so the gateway container must mount a container-engine socket at `/var/run/docker.sock`.
+
+- Docker (default): no extra env var needed.
+- Podman: set `DOCKER_SOCKET_PATH=/run/user/1000/podman/podman.sock` (no `DOCKER_HOST` needed when you use real `podman compose`).
+
+Recommended auto-detect command:
+
+```bash
+if command -v podman >/dev/null 2>&1; then
+  DOCKER_SOCKET_PATH=/run/user/1000/podman/podman.sock podman compose up --build
+else
+  docker compose up --build
+fi
+```
+
+Background: if Podman is used but `DOCKER_SOCKET_PATH` is not set, Traefik may start but cannot discover routes correctly because it reads the wrong socket path.
 
 > For full setup instructions, prerequisites, and development commands, see [`GETTING_STARTED.md`](GETTING_STARTED.md).
 
@@ -76,4 +95,3 @@ Verify: `curl http://localhost:8080/health`
 This project uses the [MIT License](LICENSE).
 
 > Template by [Hung Dang](https://github.com/hungdn1701) · [Template guide](GETTING_STARTED.md)
-
