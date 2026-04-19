@@ -33,7 +33,7 @@ compose.yml              → Container orchestration (Traefik + 3 services + Pos
 |-----------|-----------|
 | Package manager | pnpm |
 | Backend | ExpressJS 5 + TypeScript (tsdown bundler) |
-| Frontend | Vite + React 19 + TailwindCSS v4 |
+| Frontend | Vite + React 18 + TailwindCSS v4 |
 | Database | PostgreSQL 18-alpine (3 databases: chatapp_user, chatapp_friend, chatapp_message) |
 | Cache/Broker | Redis 8-alpine (@socket.io/redis-adapter) |
 | Gateway | Traefik v3 (Docker provider, auto-discovery via container labels) |
@@ -63,8 +63,8 @@ compose.yml              → Container orchestration (Traefik + 3 services + Pos
 
 ## Core Constraints
 
-1. **Docker-first**: All code runs inside Docker containers.
-2. **Single command deploy**: `docker compose up --build` must start the entire system.
+1. **Container-first**: Prefer `podman compose` when Podman exists, otherwise use `docker compose`.
+2. **Single command deploy**: Compose must start the entire system with one command.
 3. **Database per service**: Each service owns its data. No shared databases.
 4. **Gateway routing**: Client → Traefik → Services. Never bypass the gateway.
 5. **Health checks**: Every service implements `GET /health` → `{"status": "ok"}`.
@@ -120,11 +120,23 @@ pnpm lint && pnpm format:check && pnpm run build && pnpm test -- --run
 
 ## When Debugging
 
-1. Check Docker logs: `docker compose logs <service-name>`
-2. Verify network connectivity between services
-3. Check environment variables are properly loaded
-4. Verify port mappings and Traefik labels in compose.yml
-5. Test health endpoints first: `curl http://localhost:8080/health`
+1. Detect engine first:
+
+   ```bash
+   if command -v podman >/dev/null 2>&1; then
+     export COMPOSE_CMD="podman compose"
+     export DOCKER_SOCKET_PATH="/run/user/1000/podman/podman.sock"
+   else
+     export COMPOSE_CMD="docker compose"
+     unset DOCKER_SOCKET_PATH
+   fi
+   ```
+
+2. Check container logs: `$COMPOSE_CMD logs <service-name>`
+3. Verify network connectivity between services
+4. Check environment variables are properly loaded
+5. Verify port mappings and Traefik labels in compose.yml
+6. Test health endpoints first: `curl http://localhost:8080/health/user`
 
 ## File Conventions
 
