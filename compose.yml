@@ -1,38 +1,96 @@
 services:
   gateway:
-    image: caddy:2-alpine
+    image: ghcr.io/traefik/traefik:v3.6.13
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
+      - "8081:8081"
+
     volumes:
-      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./docs/api-specs:/srv/api-specs:ro
+      - ./gateway/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock:ro
+
     depends_on:
       - frontend
+      - api-specs
       - user-service
       - friend-service
       - message-service
+
     networks:
       - chatapp-network
+
     restart: unless-stopped
 
   frontend:
     build: ./frontend
+
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend.entrypoints=web
+      - traefik.http.routers.frontend.priority=1
+      - traefik.http.services.frontend.loadbalancer.server.port=3000
+
     networks:
       - chatapp-network
+
+    restart: unless-stopped
+
+  api-specs:
+    image: caddy:2-alpine
+    command: ["caddy", "file-server", "--root", "/srv", "--listen", ":8082"]
+
+    volumes:
+      - ./docs/api-specs:/srv:ro
+
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api-specs.rule=PathPrefix(`/api-specs`)
+      - traefik.http.routers.api-specs.entrypoints=web
+      - traefik.http.routers.api-specs.priority=120
+      - traefik.http.routers.api-specs.middlewares=api-specs-strip
+      - traefik.http.middlewares.api-specs-strip.stripprefix.prefixes=/api-specs
+      - traefik.http.services.api-specs.loadbalancer.server.port=8082
+
+    networks:
+      - chatapp-network
+
     restart: unless-stopped
 
   user-service:
     build: ./services/user-service
+
     environment:
       - PORT=5001
       - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_user
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.user-auth.rule=PathPrefix(`/api/auth`)
+      - traefik.http.routers.user-auth.entrypoints=web
+      - traefik.http.routers.user-auth.priority=100
+      - traefik.http.routers.user-auth.service=user-service
+      - traefik.http.routers.user-users.rule=PathPrefix(`/api/users`)
+      - traefik.http.routers.user-users.entrypoints=web
+      - traefik.http.routers.user-users.priority=100
+      - traefik.http.routers.user-users.service=user-service
+      - traefik.http.routers.user-health.rule=Path(`/health/user`)
+      - traefik.http.routers.user-health.entrypoints=web
+      - traefik.http.routers.user-health.priority=110
+      - traefik.http.routers.user-health.middlewares=user-health-rewrite
+      - traefik.http.routers.user-health.service=user-service
+      - traefik.http.middlewares.user-health-rewrite.replacepath.path=/health
+      - traefik.http.services.user-service.loadbalancer.server.port=5001
+
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - chatapp-network
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "node", "/app/healthcheck.mjs"]
       interval: 10s
@@ -45,12 +103,30 @@ services:
       - PORT=5002
       - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_friend
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
+
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.friend-api.rule=PathPrefix(`/api/friends`)
+      - traefik.http.routers.friend-api.entrypoints=web
+      - traefik.http.routers.friend-api.priority=100
+      - traefik.http.routers.friend-api.service=friend-service
+      - traefik.http.routers.friend-health.rule=Path(`/health/friend`)
+      - traefik.http.routers.friend-health.entrypoints=web
+      - traefik.http.routers.friend-health.priority=110
+      - traefik.http.routers.friend-health.middlewares=friend-health-rewrite
+      - traefik.http.routers.friend-health.service=friend-service
+      - traefik.http.middlewares.friend-health-rewrite.replacepath.path=/health
+      - traefik.http.services.friend-service.loadbalancer.server.port=5002
+
     depends_on:
       postgres:
         condition: service_healthy
+
     networks:
       - chatapp-network
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "node", "/app/healthcheck.mjs"]
       interval: 10s
@@ -59,20 +135,47 @@ services:
 
   message-service:
     build: ./services/message-service
+
     environment:
       - PORT=5003
       - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_message
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
       - FRIEND_SERVICE_URL=http://friend-service:5002
       - REDIS_URL=redis://redis:6379
+
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.message-api.rule=PathPrefix(`/api/messages`)
+      - traefik.http.routers.message-api.entrypoints=web
+      - traefik.http.routers.message-api.priority=100
+      - traefik.http.routers.message-api.service=message-service
+      - traefik.http.routers.moderation-api.rule=PathPrefix(`/api/moderation`)
+      - traefik.http.routers.moderation-api.entrypoints=web
+      - traefik.http.routers.moderation-api.priority=100
+      - traefik.http.routers.moderation-api.service=message-service
+      - traefik.http.routers.socket-io.rule=PathPrefix(`/socket.io`)
+      - traefik.http.routers.socket-io.entrypoints=web
+      - traefik.http.routers.socket-io.priority=110
+      - traefik.http.routers.socket-io.service=message-service
+      - traefik.http.routers.message-health.rule=Path(`/health/message`)
+      - traefik.http.routers.message-health.entrypoints=web
+      - traefik.http.routers.message-health.priority=110
+      - traefik.http.routers.message-health.middlewares=message-health-rewrite
+      - traefik.http.routers.message-health.service=message-service
+      - traefik.http.middlewares.message-health-rewrite.replacepath.path=/health
+      - traefik.http.services.message-service.loadbalancer.server.port=5003
+
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
     networks:
       - chatapp-network
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "node", "/app/healthcheck.mjs"]
       interval: 10s
@@ -81,18 +184,24 @@ services:
 
   postgres:
     image: postgres:18-alpine
+
     environment:
       POSTGRES_USER: ${DB_USER:-chatapp}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
       POSTGRES_DB: chatapp
+
     ports:
       - "${DB_PORT:-5432}:5432"
+
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+
     networks:
       - chatapp-network
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chatapp}"]
       interval: 5s
@@ -101,11 +210,15 @@ services:
 
   redis:
     image: redis:8-alpine
+
     ports:
       - "${REDIS_PORT:-6379}:6379"
+
     networks:
       - chatapp-network
+
     restart: unless-stopped
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -114,6 +227,7 @@ services:
 
 networks:
   chatapp-network:
+    name: chatapp-network
     driver: bridge
 
 volumes:
