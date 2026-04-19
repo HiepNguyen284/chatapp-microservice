@@ -1,0 +1,46 @@
+:8080 {
+  handle /api-specs/* {
+    root * /srv
+    file_server
+  }
+
+  handle /api/auth* {
+    reverse_proxy user-service:5001
+  }
+
+  handle /api/users* {
+    reverse_proxy user-service:5001
+  }
+
+  handle /api/friends* {
+    reverse_proxy friend-service:5002
+  }
+
+  handle /api/messages* {
+    reverse_proxy message-service:5003
+  }
+
+  handle /api/moderation* {
+    reverse_proxy message-service:5003
+  }
+
+  handle /socket.io* {
+    reverse_proxy message-service:5003
+  }
+
+  handle /health/user {
+    reverse_proxy user-service:5001
+  }
+
+  handle /health/friend {
+    reverse_proxy friend-service:5002
+  }
+
+  handle /health/message {
+    reverse_proxy message-service:5003
+  }
+
+  handle {
+    reverse_proxy frontend:3000
+  }
+}

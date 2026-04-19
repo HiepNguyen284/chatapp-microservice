@@ -1,10 +1,11 @@
 services:
   gateway:
-    image: nginx:alpine
+    image: caddy:2-alpine
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     volumes:
-      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./docs/api-specs:/srv/api-specs:ro
     depends_on:
       - frontend
       - user-service
