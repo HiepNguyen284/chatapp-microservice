@@ -6,14 +6,6 @@ export interface JwtPayload {
   role: string;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
-  }
-}
-
 const JWT_SECRET = process.env.JWT_SECRET ?? "dev-jwt-secret";
 
 export function authMiddleware(
