@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:24-slim AS build
 
 RUN corepack enable
@@ -9,12 +11,10 @@ WORKDIR /app
 
 COPY package.json /app
 COPY pnpm-lock.yaml /app
-
-# Use hoisted linker for Node 24 compatibility with tsdown
-RUN echo 'node-linker=hoisted' > .npmrc && pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 COPY . /app
-RUN pnpm run build
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm run build
 
 FROM node:24-slim
 

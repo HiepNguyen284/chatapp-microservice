@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Frontend — Multi-stage build (Vite + Caddy)
 FROM node:24-slim AS build
 
@@ -10,10 +12,10 @@ WORKDIR /app
 
 COPY package.json /app
 COPY pnpm-lock.yaml /app
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 COPY . /app
-RUN pnpm run build
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm run build
 
 # Production — Caddy serves static files
 FROM caddy:2-alpine
