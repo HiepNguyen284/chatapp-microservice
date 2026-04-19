@@ -1,15 +1,40 @@
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Layout from "./components/Layout";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import FriendsPage from "./pages/FriendsPage";
+import ChatPage from "./pages/ChatPage";
+import AdminPage from "./pages/AdminPage";
+
 function App() {
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-white mb-4">
-          💬 ChatApp
-        </h1>
-        <p className="text-gray-400 text-lg">
-          Frontend is running — Vite + React + TailwindCSS
-        </p>
-      </div>
-    </div>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+
+          {/* Protected routes */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/friends" element={<FriendsPage />} />
+            <Route path="/chat/:userId" element={<ChatPage />} />
+            <Route path="/admin/moderation" element={<AdminPage />} />
+          </Route>
+
+          {/* Default redirect */}
+          <Route path="*" element={<Navigate to="/friends" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
