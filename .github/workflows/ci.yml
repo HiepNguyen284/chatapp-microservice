@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   frontend:
     name: Frontend
@@ -102,10 +105,71 @@ jobs:
       - run: pnpm run build
       - run: pnpm test -- --run
 
+  integration-tests:
+    name: Integration Tests (Hurl)
+    runs-on: ubuntu-latest
+    needs: [frontend, user-service, friend-service, message-service]
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: cp .env.example .env
+      - run: docker compose up -d --build
+
+      - name: Install Hurl
+        uses: gacts/install-hurl@v1
+        with:
+          version: 7.1.0
+
+      - name: Wait for gateway and health endpoints
+        run: |
+          for i in {1..60}; do
+            if hurl --test --variable base_url=http://localhost:8080 tests/integration/health.hurl >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Reset integration test data
+        run: |
+          docker compose exec -T postgres psql -U chatapp -d chatapp_message \
+            -c "TRUNCATE TABLE messages, banned_words RESTART IDENTITY;"
+          docker compose exec -T postgres psql -U chatapp -d chatapp_friend \
+            -c "TRUNCATE TABLE friend_requests RESTART IDENTITY;"
+          docker compose exec -T postgres psql -U chatapp -d chatapp_user \
+            -c "DELETE FROM users WHERE email IN ('alice.integration@example.com','bob.integration@example.com','charlie.integration@example.com');"
+
+      - name: Run auth integration tests
+        run: hurl --test --variable base_url=http://localhost:8080 tests/integration/auth.hurl
+
+      - name: Run friends integration tests
+        run: hurl --test --variable base_url=http://localhost:8080 tests/integration/friends.hurl
+
+      - name: Run messages integration tests
+        run: hurl --test --variable base_url=http://localhost:8080 tests/integration/messages.hurl
+
+      - name: Promote alice user to admin
+        run: |
+          docker compose exec -T postgres psql -U chatapp -d chatapp_user \
+            -c "UPDATE users SET role = 'ADMIN' WHERE email = 'alice.integration@example.com';"
+
+      - name: Run moderation integration tests
+        run: hurl --test --variable base_url=http://localhost:8080 tests/integration/moderation.hurl
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v
+
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [frontend, user-service, friend-service, message-service]
+    needs:
+      [frontend, user-service, friend-service, message-service, integration-tests]
     steps:
       - uses: actions/checkout@v4
 
