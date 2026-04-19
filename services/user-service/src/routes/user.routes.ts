@@ -1,8 +1,26 @@
 import { Router, type Request, type Response } from "express";
 import { authMiddleware } from "../middleware/auth.js";
-import { getUserById, searchUsers } from "../services/user.service.js";
+import { getUserById, getUsersByIds, searchUsers } from "../services/user.service.js";
 
 const router = Router();
+
+// POST /api/users/batch — Lookup users by IDs
+router.post("/batch", authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body as { ids: number[] };
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: "ids array is required" });
+      return;
+    }
+
+    // Limit to 50 users max
+    const users = await getUsersByIds(ids.slice(0, 50));
+    res.json(users);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
 
 // GET /api/users/me
 router.get("/me", authMiddleware, async (req: Request, res: Response) => {

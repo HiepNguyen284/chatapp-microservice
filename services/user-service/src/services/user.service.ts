@@ -99,3 +99,16 @@ export async function searchUsers(
 
   return result.rows as User[];
 }
+
+export async function getUsersByIds(ids: number[]): Promise<User[]> {
+  if (ids.length === 0) return [];
+
+  // Build parameterized query: WHERE id IN ($1, $2, $3, ...)
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+  const result = await pool.query(
+    `SELECT id, username, email, role, created_at FROM users WHERE id IN (${placeholders})`,
+    ids,
+  );
+
+  return result.rows as User[];
+}

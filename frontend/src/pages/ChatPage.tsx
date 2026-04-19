@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
 import { useSocket } from "../hooks/useSocket";
-import type { Message } from "../types";
+import type { Message, User } from "../types";
 
 export default function ChatPage() {
   const { userId } = useParams<{ userId: string }>();
@@ -14,7 +14,19 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [otherUser, setOtherUser] = useState<User | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch other user's info
+  useEffect(() => {
+    if (!otherUserId) return;
+    api.post("/api/users/batch", { ids: [otherUserId] })
+      .then(({ data }) => {
+        const users = data as User[];
+        if (users.length > 0) setOtherUser(users[0]!);
+      })
+      .catch(() => {});
+  }, [otherUserId]);
 
   // Handle incoming real-time messages
   const handleNewMessage = useCallback(
@@ -77,6 +89,9 @@ export default function ChatPage() {
     }
   };
 
+  const displayName = otherUser?.username ?? `User #${otherUserId}`;
+  const displayInitial = displayName.charAt(0).toUpperCase();
+
   return (
     <div className="h-full flex flex-col">
       {/* Chat header */}
@@ -89,11 +104,11 @@ export default function ChatPage() {
         </button>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-sm">
-            U
+            {displayInitial}
           </div>
           <div>
             <h3 className="text-gray-200 font-semibold">
-              User #{otherUserId}
+              {displayName}
             </h3>
             <p className="text-xs text-gray-500">Đang trò chuyện</p>
           </div>

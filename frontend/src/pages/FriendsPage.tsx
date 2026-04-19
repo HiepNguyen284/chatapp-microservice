@@ -13,6 +13,7 @@ export default function FriendsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [searching, setSearching] = useState(false);
+  const [sentRequests, setSentRequests] = useState<Set<number>>(new Set());
 
   // Friends & Requests
   const [friends, setFriends] = useState<FriendRequest[]>([]);
@@ -21,6 +22,9 @@ export default function FriendsPage() {
     "friends",
   );
 
+  // User info cache: id → User
+  const [userMap, setUserMap] = useState<Record<number, User>>({});
+
   // Toast notification
   const [toast, setToast] = useState<string | null>(null);
 
@@ -28,6 +32,35 @@ export default function FriendsPage() {
     setToast(message);
     setTimeout(() => setToast(null), 4000);
   }, []);
+
+  // ─── Fetch user details by IDs ──────────
+
+  const fetchUserDetails = useCallback(async (ids: number[]) => {
+    // Filter out already-known IDs and self
+    const unknownIds = ids.filter((id) => !userMap[id] && id !== user?.id);
+    if (unknownIds.length === 0) return;
+
+    try {
+      const { data } = await api.post("/api/users/batch", { ids: unknownIds });
+      const map: Record<number, User> = {};
+      for (const u of data as User[]) {
+        map[u.id] = u;
+      }
+      setUserMap((prev) => ({ ...prev, ...map }));
+    } catch (err) {
+      console.error("Failed to fetch user details", err);
+    }
+  }, [userMap, user?.id]);
+
+  const getUserName = (id: number): string => {
+    if (id === user?.id) return user?.username ?? `User #${id}`;
+    return userMap[id]?.username ?? `User #${id}`;
+  };
+
+  const getUserInitial = (id: number): string => {
+    const name = getUserName(id);
+    return name.charAt(0).toUpperCase();
+  };
 
   // ─── Socket.io — Real-time friend notifications ──────────
 
@@ -59,6 +92,12 @@ export default function FriendsPage() {
     try {
       const { data } = await api.get("/api/friends");
       setFriends(data);
+
+      // Fetch usernames for friend IDs
+      const ids = (data as FriendRequest[]).map((fr) =>
+        fr.sender_id === user?.id ? fr.receiver_id : fr.sender_id,
+      );
+      if (ids.length > 0) fetchUserDetails(ids);
     } catch (err) {
       console.error("Failed to load friends", err);
     }
@@ -68,6 +107,10 @@ export default function FriendsPage() {
     try {
       const { data } = await api.get("/api/friends/requests/received");
       setRequests(data);
+
+      // Fetch usernames for sender IDs
+      const ids = (data as FriendRequest[]).map((r) => r.sender_id);
+      if (ids.length > 0) fetchUserDetails(ids);
     } catch (err) {
       console.error("Failed to load requests", err);
     }
@@ -95,11 +138,12 @@ export default function FriendsPage() {
       const { data } = await api.post("/api/friends/requests", { receiverId });
       // Notify receiver via Socket.io in real time
       emit("friend_request_sent", { receiverId, request: data });
-      // Remove from search results to indicate sent
-      setSearchResults((prev) => prev.filter((u) => u.id !== receiverId));
+      // Mark as sent (changes button state)
+      setSentRequests((prev) => new Set(prev).add(receiverId));
       showToast("✅ Đã gửi lời mời kết bạn!");
-    } catch (err) {
-      console.error("Failed to send request", err);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      showToast(`❌ ${msg ?? "Gửi lời mời thất bại"}`);
     }
   };
 
@@ -110,6 +154,7 @@ export default function FriendsPage() {
       emit("friend_request_accepted", { senderId, request: data });
       await loadRequests();
       await loadFriends();
+      showToast("✅ Đã chấp nhận lời mời kết bạn!");
     } catch (err) {
       console.error("Failed to accept request", err);
     }
@@ -121,6 +166,7 @@ export default function FriendsPage() {
       // Notify sender via Socket.io in real time
       emit("friend_request_rejected", { senderId, requestId });
       await loadRequests();
+      showToast("Đã từ chối lời mời kết bạn.");
     } catch (err) {
       console.error("Failed to reject request", err);
     }
@@ -200,28 +246,36 @@ export default function FriendsPage() {
             </form>
 
             <div className="space-y-3">
-              {searchResults.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center justify-between p-4 bg-gray-900/50 border border-gray-800/50 rounded-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
-                      {u.username.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-gray-200 font-medium">{u.username}</p>
-                      <p className="text-gray-500 text-xs">{u.email}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => sendRequest(u.id)}
-                    className="px-4 py-2 bg-violet-600/20 text-violet-300 hover:bg-violet-600/30 rounded-lg text-sm font-medium transition-all duration-200"
+              {searchResults.map((u) => {
+                const alreadySent = sentRequests.has(u.id);
+                return (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between p-4 bg-gray-900/50 border border-gray-800/50 rounded-xl"
                   >
-                    Kết bạn
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm">
+                        {u.username.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-gray-200 font-medium">{u.username}</p>
+                        <p className="text-gray-500 text-xs">{u.email}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => !alreadySent && sendRequest(u.id)}
+                      disabled={alreadySent}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        alreadySent
+                          ? "bg-gray-700/30 text-gray-500 cursor-default"
+                          : "bg-violet-600/20 text-violet-300 hover:bg-violet-600/30"
+                      }`}
+                    >
+                      {alreadySent ? "✓ Đã gửi" : "Kết bạn"}
+                    </button>
+                  </div>
+                );
+              })}
               {searchResults.length === 0 && searchQuery && !searching && (
                 <p className="text-gray-500 text-center py-8">
                   Không tìm thấy kết quả
@@ -246,11 +300,11 @@ export default function FriendsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white font-bold text-sm">
-                      ?
+                      {getUserInitial(req.sender_id)}
                     </div>
                     <div>
                       <p className="text-gray-200 font-medium">
-                        User #{req.sender_id}
+                        {getUserName(req.sender_id)}
                       </p>
                       <p className="text-gray-500 text-xs">
                         {new Date(req.created_at).toLocaleDateString("vi-VN")}
@@ -299,11 +353,11 @@ export default function FriendsPage() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-sm">
-                        U
+                        {getUserInitial(friendId)}
                       </div>
                       <div>
                         <p className="text-gray-200 font-medium">
-                          User #{friendId}
+                          {getUserName(friendId)}
                         </p>
                         <p className="text-gray-500 text-xs">
                           Bạn bè từ{" "}
