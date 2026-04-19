@@ -36,7 +36,7 @@ export default function ChatPage() {
     [otherUserId, user?.id],
   );
 
-  useSocket(handleNewMessage);
+  useSocket({ onNewMessage: handleNewMessage });
 
   useEffect(() => {
     loadMessages();

@@ -1,7 +1,8 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
+import { useSocket } from "../hooks/useSocket";
 import type { User, FriendRequest } from "../types";
 
 export default function FriendsPage() {
@@ -19,6 +20,35 @@ export default function FriendsPage() {
   const [activeTab, setActiveTab] = useState<"friends" | "requests" | "search">(
     "friends",
   );
+
+  // Toast notification
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  // ─── Socket.io — Real-time friend notifications ──────────
+
+  const { emit } = useSocket({
+    onFriendRequestReceived: useCallback(() => {
+      loadRequests();
+      showToast("📩 Bạn nhận được lời mời kết bạn mới!");
+    }, []),
+
+    onFriendRequestAccepted: useCallback(() => {
+      loadFriends();
+      loadRequests();
+      showToast("🎉 Lời mời kết bạn đã được chấp nhận!");
+    }, []),
+
+    onFriendRequestRejected: useCallback(() => {
+      showToast("😢 Lời mời kết bạn đã bị từ chối.");
+    }, []),
+  });
+
+  // ─── API calls ──────────
 
   useEffect(() => {
     loadFriends();
@@ -62,17 +92,22 @@ export default function FriendsPage() {
 
   const sendRequest = async (receiverId: number) => {
     try {
-      await api.post("/api/friends/requests", { receiverId });
+      const { data } = await api.post("/api/friends/requests", { receiverId });
+      // Notify receiver via Socket.io in real time
+      emit("friend_request_sent", { receiverId, request: data });
       // Remove from search results to indicate sent
       setSearchResults((prev) => prev.filter((u) => u.id !== receiverId));
+      showToast("✅ Đã gửi lời mời kết bạn!");
     } catch (err) {
       console.error("Failed to send request", err);
     }
   };
 
-  const acceptRequest = async (requestId: number) => {
+  const acceptRequest = async (requestId: number, senderId: number) => {
     try {
-      await api.put(`/api/friends/requests/${requestId}/accept`);
+      const { data } = await api.put(`/api/friends/requests/${requestId}/accept`);
+      // Notify sender via Socket.io in real time
+      emit("friend_request_accepted", { senderId, request: data });
       await loadRequests();
       await loadFriends();
     } catch (err) {
@@ -80,9 +115,11 @@ export default function FriendsPage() {
     }
   };
 
-  const rejectRequest = async (requestId: number) => {
+  const rejectRequest = async (requestId: number, senderId: number) => {
     try {
       await api.put(`/api/friends/requests/${requestId}/reject`);
+      // Notify sender via Socket.io in real time
+      emit("friend_request_rejected", { senderId, requestId });
       await loadRequests();
     } catch (err) {
       console.error("Failed to reject request", err);
@@ -95,6 +132,15 @@ export default function FriendsPage() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-slide-in">
+          <div className="px-5 py-3 bg-gray-800/90 backdrop-blur-sm border border-violet-500/30 rounded-xl text-gray-200 text-sm shadow-2xl shadow-violet-500/10">
+            {toast}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="px-8 py-6 border-b border-gray-800/50">
         <h2 className="text-2xl font-bold text-white">Bạn bè</h2>
@@ -196,7 +242,7 @@ export default function FriendsPage() {
               requests.map((req) => (
                 <div
                   key={req.id}
-                  className="flex items-center justify-between p-4 bg-gray-900/50 border border-gray-800/50 rounded-xl"
+                  className="flex items-center justify-between p-4 bg-gray-900/50 border border-gray-800/50 rounded-xl animate-fade-in"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white font-bold text-sm">
@@ -213,13 +259,13 @@ export default function FriendsPage() {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => acceptRequest(req.id)}
+                      onClick={() => acceptRequest(req.id, req.sender_id)}
                       className="px-4 py-2 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 rounded-lg text-sm font-medium transition-all duration-200"
                     >
                       Chấp nhận
                     </button>
                     <button
-                      onClick={() => rejectRequest(req.id)}
+                      onClick={() => rejectRequest(req.id, req.sender_id)}
                       className="px-4 py-2 bg-red-600/20 text-red-300 hover:bg-red-600/30 rounded-lg text-sm font-medium transition-all duration-200"
                     >
                       Từ chối

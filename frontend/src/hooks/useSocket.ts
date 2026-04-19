@@ -3,9 +3,18 @@ import { io, Socket } from "socket.io-client";
 import { useAuth } from "../contexts/AuthContext";
 import type { Message } from "../types";
 
-export function useSocket(onNewMessage?: (message: Message) => void) {
+interface UseSocketOptions {
+  onNewMessage?: (message: Message) => void;
+  onFriendRequestReceived?: (data: { request: unknown }) => void;
+  onFriendRequestAccepted?: (data: { request: unknown }) => void;
+  onFriendRequestRejected?: (data: { requestId: number }) => void;
+}
+
+export function useSocket(options: UseSocketOptions = {}) {
   const { token, isAuthenticated } = useAuth();
   const socketRef = useRef<Socket | null>(null);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const connectSocket = useCallback(() => {
     if (!isAuthenticated || !token) return;
@@ -47,14 +56,45 @@ export function useSocket(onNewMessage?: (message: Message) => void) {
 
   // Listen for new messages
   useEffect(() => {
-    if (!socketRef.current || !onNewMessage) return;
+    const socket = socketRef.current;
+    if (!socket) return;
 
-    socketRef.current.on("new_message", onNewMessage);
+    const onMsg = (msg: Message) => optionsRef.current.onNewMessage?.(msg);
+    socket.on("new_message", onMsg);
+    return () => { socket.off("new_message", onMsg); };
+  }, [socketRef.current]);
+
+  // Listen for friend request events
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    const onReceived = (data: { request: unknown }) =>
+      optionsRef.current.onFriendRequestReceived?.(data);
+
+    const onAccepted = (data: { request: unknown }) =>
+      optionsRef.current.onFriendRequestAccepted?.(data);
+
+    const onRejected = (data: { requestId: number }) =>
+      optionsRef.current.onFriendRequestRejected?.(data);
+
+    socket.on("friend_request_received", onReceived);
+    socket.on("friend_request_accepted", onAccepted);
+    socket.on("friend_request_rejected", onRejected);
 
     return () => {
-      socketRef.current?.off("new_message", onNewMessage);
+      socket.off("friend_request_received", onReceived);
+      socket.off("friend_request_accepted", onAccepted);
+      socket.off("friend_request_rejected", onRejected);
     };
-  }, [onNewMessage]);
+  }, [socketRef.current]);
 
-  return socketRef;
+  // Emit helper
+  const emit = useCallback((event: string, data: unknown) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit(event, data);
+    }
+  }, []);
+
+  return { socketRef, emit };
 }
