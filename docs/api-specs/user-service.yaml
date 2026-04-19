@@ -95,11 +95,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [email, password]
               properties:
-                username:
+                email:
                   type: string
-                  example: johndoe
+                  format: email
+                  example: john@example.com
                 password:
                   type: string
                   example: "securePass123"
@@ -118,7 +119,44 @@ paths:
                   user:
                     $ref: "#/components/schemas/UserResponse"
         "401":
-          description: Sai username hoặc password
+          description: Sai email hoặc password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/batch:
+    post:
+      tags: [Users]
+      summary: Lấy danh sách user theo mảng ID
+      operationId: getUsersByIds
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: integer
+                  example: [1, 2, 3]
+      responses:
+        "200":
+          description: Danh sách user tương ứng IDs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Thiếu hoặc sai định dạng mảng ids
           content:
             application/json:
               schema:
@@ -205,7 +243,7 @@ components:
           type: string
           enum: [USER, ADMIN]
           example: USER
-        createdAt:
+        created_at:
           type: string
           format: date-time
           example: "2026-04-14T10:30:00Z"

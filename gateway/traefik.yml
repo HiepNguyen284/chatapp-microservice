@@ -6,13 +6,28 @@ api:
 entryPoints:
   web:
     address: ":8080"
+    transport:
+      lifeCycle:
+        requestAcceptGraceTimeout: 2s
+        graceTimeOut: 8s
+    http:
+      middlewares:
+        - server-header@file
   traefik:
     address: ":8081"
+    transport:
+      lifeCycle:
+        requestAcceptGraceTimeout: 2s
+        graceTimeOut: 8s
 
 providers:
   docker:
+    endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
     network: chatapp-network
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
 
 log:
   level: INFO

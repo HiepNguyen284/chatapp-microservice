@@ -51,9 +51,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [targetUserId]
+              required: [receiverId]
               properties:
-                targetUserId:
+                receiverId:
                   type: integer
                   description: ID của user muốn kết bạn
                   example: 2
@@ -185,7 +185,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/FriendResponse"
+                  $ref: "#/components/schemas/FriendRequestResponse"
         "401":
           description: Token không hợp lệ hoặc hết hạn
           content:
@@ -266,10 +266,24 @@ components:
         receiverId:
           type: integer
           example: 2
+        sender_id:
+          type: integer
+          example: 1
+        receiver_id:
+          type: integer
+          example: 2
         status:
           type: string
           enum: [PENDING, ACCEPTED, REJECTED]
           example: PENDING
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-04-14T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-04-14T10:35:00Z"
         createdAt:
           type: string
           format: date-time

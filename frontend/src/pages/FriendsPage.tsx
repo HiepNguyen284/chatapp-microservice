@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/client";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import { useSocket } from "../hooks/useSocket";
 import type { User, FriendRequest } from "../types";
 
@@ -64,31 +64,7 @@ export default function FriendsPage() {
 
   // ─── Socket.io — Real-time friend notifications ──────────
 
-  const { emit } = useSocket({
-    onFriendRequestReceived: useCallback(() => {
-      loadRequests();
-      showToast("📩 Bạn nhận được lời mời kết bạn mới!");
-    }, []),
-
-    onFriendRequestAccepted: useCallback(() => {
-      loadFriends();
-      loadRequests();
-      showToast("🎉 Lời mời kết bạn đã được chấp nhận!");
-    }, []),
-
-    onFriendRequestRejected: useCallback(() => {
-      showToast("😢 Lời mời kết bạn đã bị từ chối.");
-    }, []),
-  });
-
-  // ─── API calls ──────────
-
-  useEffect(() => {
-    loadFriends();
-    loadRequests();
-  }, []);
-
-  const loadFriends = async () => {
+  const loadFriends = useCallback(async () => {
     try {
       const { data } = await api.get("/api/friends");
       setFriends(data);
@@ -101,9 +77,9 @@ export default function FriendsPage() {
     } catch (err) {
       console.error("Failed to load friends", err);
     }
-  };
+  }, [fetchUserDetails, user?.id]);
 
-  const loadRequests = async () => {
+  const loadRequests = useCallback(async () => {
     try {
       const { data } = await api.get("/api/friends/requests/received");
       setRequests(data);
@@ -114,7 +90,35 @@ export default function FriendsPage() {
     } catch (err) {
       console.error("Failed to load requests", err);
     }
-  };
+  }, [fetchUserDetails]);
+
+  const onFriendRequestReceived = useCallback(() => {
+    void loadRequests();
+    showToast("📩 Bạn nhận được lời mời kết bạn mới!");
+  }, [loadRequests, showToast]);
+
+  const onFriendRequestAccepted = useCallback(() => {
+    void loadFriends();
+    void loadRequests();
+    showToast("🎉 Lời mời kết bạn đã được chấp nhận!");
+  }, [loadFriends, loadRequests, showToast]);
+
+  const onFriendRequestRejected = useCallback(() => {
+    showToast("😢 Lời mời kết bạn đã bị từ chối.");
+  }, [showToast]);
+
+  const { emit } = useSocket({
+    onFriendRequestReceived,
+    onFriendRequestAccepted,
+    onFriendRequestRejected,
+  });
+
+  // ─── API calls ──────────
+
+  useEffect(() => {
+    void loadFriends();
+    void loadRequests();
+  }, [loadFriends, loadRequests]);
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();

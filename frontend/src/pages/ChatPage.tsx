@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../api/client";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import { useSocket } from "../hooks/useSocket";
 import type { Message, User } from "../types";
 
@@ -50,26 +50,26 @@ export default function ChatPage() {
 
   useSocket({ onNewMessage: handleNewMessage });
 
-  useEffect(() => {
-    loadMessages();
-  }, [otherUserId]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async () => {
     try {
       const { data } = await api.get(`/api/messages/${otherUserId}`);
       setMessages(data);
     } catch (err) {
       console.error("Failed to load messages", err);
     }
-  };
+  }, [otherUserId]);
 
-  const scrollToBottom = () => {
+  useEffect(() => {
+    loadMessages();
+  }, [loadMessages]);
+
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   const handleSend = async (e: FormEvent) => {
     e.preventDefault();

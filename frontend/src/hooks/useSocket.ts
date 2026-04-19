@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts/useAuth";
 import type { Message } from "../types";
 
 interface UseSocketOptions {
@@ -14,7 +14,10 @@ export function useSocket(options: UseSocketOptions = {}) {
   const { token, isAuthenticated } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   const connectSocket = useCallback(() => {
     if (!isAuthenticated || !token) return;
@@ -61,8 +64,11 @@ export function useSocket(options: UseSocketOptions = {}) {
 
     const onMsg = (msg: Message) => optionsRef.current.onNewMessage?.(msg);
     socket.on("new_message", onMsg);
-    return () => { socket.off("new_message", onMsg); };
-  }, [socketRef.current]);
+
+    return () => {
+      socket.off("new_message", onMsg);
+    };
+  }, [token, isAuthenticated]);
 
   // Listen for friend request events
   useEffect(() => {
@@ -87,7 +93,7 @@ export function useSocket(options: UseSocketOptions = {}) {
       socket.off("friend_request_accepted", onAccepted);
       socket.off("friend_request_rejected", onRejected);
     };
-  }, [socketRef.current]);
+  }, [token, isAuthenticated]);
 
   // Emit helper
   const emit = useCallback((event: string, data: unknown) => {
