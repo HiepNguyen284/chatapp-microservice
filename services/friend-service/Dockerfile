@@ -9,10 +9,12 @@ WORKDIR /app
 
 COPY package.json /app
 COPY pnpm-lock.yaml /app
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# Use hoisted linker for Node 24 compatibility with tsdown
+RUN echo 'node-linker=hoisted' > .npmrc && pnpm install --frozen-lockfile
 
 COPY . /app
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm run build
+RUN pnpm run build
 
 FROM node:24-slim
 

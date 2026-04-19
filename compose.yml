@@ -1,26 +1,21 @@
 services:
-  traefik:
-    image: traefik:v3.0
+  gateway:
+    image: nginx:alpine
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
-      - "8081:8081"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./gateway/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - user-service
+      - friend-service
+      - message-service
     networks:
       - chatapp-network
     restart: unless-stopped
 
   frontend:
     build: ./frontend
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.frontend.priority=1"
-      - "traefik.http.routers.frontend.entrypoints=web"
-      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
-    depends_on:
-      - traefik
     networks:
       - chatapp-network
     restart: unless-stopped
@@ -31,22 +26,6 @@ services:
       - PORT=5001
       - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_user
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.user-auth.rule=PathPrefix(`/api/auth`)"
-      - "traefik.http.routers.user-auth.priority=10"
-      - "traefik.http.routers.user-auth.entrypoints=web"
-      - "traefik.http.services.user-auth.loadbalancer.server.port=5001"
-      - "traefik.http.routers.user-api.rule=PathPrefix(`/api/users`)"
-      - "traefik.http.routers.user-api.priority=10"
-      - "traefik.http.routers.user-api.entrypoints=web"
-      - "traefik.http.services.user-api.loadbalancer.server.port=5001"
-      - "traefik.http.routers.user-health.rule=Path(`/health/user`)"
-      - "traefik.http.routers.user-health.priority=10"
-      - "traefik.http.routers.user-health.entrypoints=web"
-      - "traefik.http.routers.user-health.service=user-auth"
-      - "traefik.http.routers.user-health.middlewares=user-health-path"
-      - "traefik.http.middlewares.user-health-path.replacepath.path=/health"
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,18 +44,6 @@ services:
       - PORT=5002
       - DATABASE_URL=postgresql://${DB_USER:-chatapp}:${DB_PASSWORD:-secret}@postgres:5432/chatapp_friend
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.friend-api.rule=PathPrefix(`/api/friends`)"
-      - "traefik.http.routers.friend-api.priority=10"
-      - "traefik.http.routers.friend-api.entrypoints=web"
-      - "traefik.http.services.friend-api.loadbalancer.server.port=5002"
-      - "traefik.http.routers.friend-health.rule=Path(`/health/friend`)"
-      - "traefik.http.routers.friend-health.priority=10"
-      - "traefik.http.routers.friend-health.entrypoints=web"
-      - "traefik.http.routers.friend-health.service=friend-api"
-      - "traefik.http.routers.friend-health.middlewares=friend-health-path"
-      - "traefik.http.middlewares.friend-health-path.replacepath.path=/health"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,26 +64,6 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-jwt-secret}
       - FRIEND_SERVICE_URL=http://friend-service:5002
       - REDIS_URL=redis://redis:6379
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.message-api.rule=PathPrefix(`/api/messages`)"
-      - "traefik.http.routers.message-api.priority=10"
-      - "traefik.http.routers.message-api.entrypoints=web"
-      - "traefik.http.services.message-api.loadbalancer.server.port=5003"
-      - "traefik.http.routers.moderation-api.rule=PathPrefix(`/api/moderation`)"
-      - "traefik.http.routers.moderation-api.priority=10"
-      - "traefik.http.routers.moderation-api.entrypoints=web"
-      - "traefik.http.services.moderation-api.loadbalancer.server.port=5003"
-      - "traefik.http.routers.socketio.rule=PathPrefix(`/socket.io`)"
-      - "traefik.http.routers.socketio.priority=10"
-      - "traefik.http.routers.socketio.entrypoints=web"
-      - "traefik.http.services.socketio.loadbalancer.server.port=5003"
-      - "traefik.http.routers.message-health.rule=Path(`/health/message`)"
-      - "traefik.http.routers.message-health.priority=10"
-      - "traefik.http.routers.message-health.entrypoints=web"
-      - "traefik.http.routers.message-health.service=message-api"
-      - "traefik.http.routers.message-health.middlewares=message-health-path"
-      - "traefik.http.middlewares.message-health-path.replacepath.path=/health"
     depends_on:
       postgres:
         condition: service_healthy
