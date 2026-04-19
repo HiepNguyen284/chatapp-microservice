@@ -147,12 +147,13 @@ Map entities/processes to REST URI Resources.
 | user-service | Đăng nhập | `/api/auth/login` | POST |
 | user-service | Lấy profile hiện tại | `/api/users/me` | GET |
 | user-service | Tìm kiếm user | `/api/users/search?q={keyword}` | GET |
+| user-service | Tra cứu user theo danh sách ID | `/api/users/batch` | POST |
 | friend-service | Gửi lời mời kết bạn | `/api/friends/requests` | POST |
 | friend-service | Lấy lời mời nhận được | `/api/friends/requests/received` | GET |
 | friend-service | Chấp nhận lời mời | `/api/friends/requests/{id}/accept` | PUT |
 | friend-service | Từ chối lời mời | `/api/friends/requests/{id}/reject` | PUT |
 | friend-service | Lấy danh sách bạn bè | `/api/friends` | GET |
-| friend-service | Kiểm tra quan hệ bạn bè (internal) | `/api/friends/check?userId1={id1}&userId2={id2}` | GET |
+| friend-service | Kiểm tra quan hệ bạn bè (internal) | `/api/friends/check?userId1={id1}\&userId2={id2}` | GET |
 | message-service | Gửi tin nhắn (kiểm tra bạn bè + lọc nội dung) | `/api/messages` | POST |
 | message-service | Lấy lịch sử tin nhắn | `/api/messages/{userId}` | GET |
 | message-service | Nhận tin nhắn real-time | `/socket.io/` | WebSocket (Socket.io) |
@@ -189,7 +190,7 @@ sequenceDiagram
     UserService-->>Gateway: 201 Created (user info)
     Gateway-->>Client: 201 Created
 
-    Client->>Gateway: POST /api/auth/login (username, password)
+    Client->>Gateway: POST /api/auth/login (email, password)
     Gateway->>UserService: Forward login request
     UserService->>UserService: Verify credentials
     UserService-->>Gateway: 200 OK (JWT token with role)
@@ -201,7 +202,7 @@ sequenceDiagram
     UserService-->>Gateway: 200 OK (list of users)
     Gateway-->>Client: 200 OK (list of users)
 
-    Client->>Gateway: POST /api/friends/requests (targetUserId, JWT)
+    Client->>Gateway: POST /api/friends/requests (receiverId, JWT)
     Gateway->>FriendService: Forward request
     FriendService->>FriendService: Validate JWT token
     FriendService->>FriendService: Create PENDING request
@@ -258,9 +259,10 @@ Service Contract specification for each service. Full OpenAPI specs:
 |----------|--------|-------------|--------------|----------------|
 | `/health` | GET | Health check | — | 200 |
 | `/api/auth/register` | POST | Đăng ký tài khoản mới | `{ username, email, password }` | 201, 400, 409 |
-| `/api/auth/login` | POST | Đăng nhập | `{ username, password }` | 200, 401 |
+| `/api/auth/login` | POST | Đăng nhập | `{ email, password }` | 200, 401 |
 | `/api/users/me` | GET | Lấy profile user hiện tại (JWT required) | — | 200, 401 |
 | `/api/users/search` | GET | Tìm kiếm user theo tên/email (JWT required) | Query: `?q={keyword}` | 200, 401 |
+| `/api/users/batch` | POST | Tra cứu user theo danh sách ID (JWT required) | `{ ids: [1,2,3] }` | 200, 400 |
 
 **Friend Service:**
 

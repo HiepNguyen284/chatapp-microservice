@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { authMiddleware } from "../middleware/auth.js";
 import { saveMessage, getConversation } from "../services/message.service.js";
 import { checkFriendship } from "../services/friend.client.js";
+import { containsBannedWord } from "../services/moderation.service.js";
 import { io } from "../app.js";
 
 const router = Router();
@@ -32,6 +33,14 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
       res
         .status(403)
         .json({ error: "You can only send messages to friends" });
+      return;
+    }
+
+    // Check content against banned words
+    if (containsBannedWord(content)) {
+      res
+        .status(400)
+        .json({ error: "Message blocked: contains banned words" });
       return;
     }
 

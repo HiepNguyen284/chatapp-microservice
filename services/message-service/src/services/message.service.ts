@@ -1,5 +1,4 @@
 import pool from "../config/db.js";
-import { filterContent } from "./moderation.service.js";
 
 export interface Message {
   id: number;
@@ -14,14 +13,11 @@ export async function saveMessage(
   receiverId: number,
   content: string,
 ): Promise<Message> {
-  // Filter banned words
-  const filteredContent = filterContent(content);
-
   const result = await pool.query(
     `INSERT INTO messages (sender_id, receiver_id, content)
      VALUES ($1, $2, $3)
      RETURNING *`,
-    [senderId, receiverId, filteredContent],
+    [senderId, receiverId, content],
   );
 
   return result.rows[0] as Message;

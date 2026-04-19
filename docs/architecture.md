@@ -106,15 +106,16 @@ Select patterns based on business/technical justifications from your analysis.
 
 | Path Prefix | Target Service | Priority | Strip Prefix? | Ghi chú |
 |-------------|---------------|----------|---------------|----------|
-| `/api/auth/*` | user-service:5001 | 10 | No | |
-| `/api/users/*` | user-service:5001 | 10 | No | |
-| `/api/friends/*` | friend-service:5002 | 10 | No | |
-| `/api/messages/*` | message-service:5003 | 10 | No | |
-| `/api/moderation/*` | message-service:5003 | 10 | No | |
-| `/socket.io/*` | message-service:5003 | 10 | No | WebSocket upgrade |
-| `/health/user` | user-service:5001 | 10 | ReplacePath(`/health`) | Health check |
-| `/health/friend` | friend-service:5002 | 10 | ReplacePath(`/health`) | Health check |
-| `/health/message` | message-service:5003 | 10 | ReplacePath(`/health`) | Health check |
+| `/api/auth/*` | user-service:5001 | 100 | No | |
+| `/api/users/*` | user-service:5001 | 100 | No | |
+| `/api/friends/*` | friend-service:5002 | 100 | No | |
+| `/api/messages/*` | message-service:5003 | 100 | No | |
+| `/api/moderation/*` | message-service:5003 | 100 | No | |
+| `/socket.io/*` | message-service:5003 | 110 | No | WebSocket upgrade |
+| `/api-specs/*` | api-specs:8082 (Caddy) | 120 | StripPrefix(`/api-specs`) | Serve OpenAPI YAML files |
+| `/health/user` | user-service:5001 | 110 | ReplacePath(`/health`) | Health check |
+| `/health/friend` | friend-service:5002 | 110 | ReplacePath(`/health`) | Health check |
+| `/health/message` | message-service:5003 | 110 | ReplacePath(`/health`) | Health check |
 | `/*` (catch-all) | frontend:3000 (Caddy) | 1 | No | Static files (React SPA) |
 
 > **Health Check qua Gateway:** Mỗi service expose `GET /health` nội bộ. Traefik sử dụng middleware `ReplacePath` để route `/health/{service-name}` đến endpoint `/health` tương ứng. Ví dụ: `curl http://localhost:8080/health/user` → user-service `/health`. Ngoài ra, Docker healthcheck cũng kiểm tra health nội bộ (xem §5 Deployment).
@@ -191,7 +192,7 @@ graph TB
 
 | Service | Image / Build | Depends On | Restart Policy |
 |---------|--------------|------------|----------------|
-| traefik | `traefik:v3.0` | — | `unless-stopped` |
+| traefik | `traefik:v3` (ghcr.io/traefik/traefik) | — | `unless-stopped` |
 | frontend | Build `./frontend` (Caddy + React build) | traefik | `unless-stopped` |
 | user-service | Build `./services/user-service` | postgres (healthy) | `unless-stopped` |
 | friend-service | Build `./services/friend-service` | postgres (healthy) | `unless-stopped` |

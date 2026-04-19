@@ -1,73 +1,45 @@
-# React + TypeScript + Vite
+# Frontend — ChatApp
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Giao diện SPA cho hệ thống chat 1-1 microservice. Hỗ trợ đăng ký/đăng nhập, tìm kiếm và kết bạn, nhắn tin real-time qua Socket.io, và quản lý từ khóa cấm (Admin).
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **React 18** + **TypeScript** — UI framework
+- **Vite** — Build tool & dev server
+- **Tailwind CSS** — Utility-first styling
+- **Socket.io Client** — Real-time messaging
+- **React Router v6** — Client-side routing
+- **Caddy** — Production static file server (Docker)
 
-## React Compiler
+## Pages
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Route | Page | Mô tả |
+|-------|------|-------|
+| `/login` | LoginPage | Đăng nhập bằng email + password |
+| `/register` | RegisterPage | Đăng ký tài khoản mới |
+| `/friends` | FriendsPage | Tìm kiếm user, gửi/chấp nhận/từ chối lời mời, danh sách bạn bè |
+| `/chat/:userId` | ChatPage | Nhắn tin 1-1 real-time với bạn bè |
+| `/admin/moderation` | AdminPage | Quản lý từ khóa cấm (ADMIN only) |
+| `/docs` | ApiDocsPage | Swagger UI hiển thị OpenAPI specs |
 
-## Expanding the ESLint configuration
+## Local Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install
+pnpm run dev        # Dev server tại http://localhost:5173
+pnpm run build      # Production build vào dist/
+pnpm run lint       # ESLint check
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Docker
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Frontend được đóng gói thành multi-stage Docker image:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+1. **Build stage**: `node:24-slim` + pnpm → Vite build
+2. **Production stage**: `caddy:2-alpine` serve static files tại port 3000
+
+Caddy config: [`Caddyfile`](Caddyfile)
+
+## Environment
+
+Frontend gọi API qua relative path (ví dụ `/api/auth/login`). Trong Docker, Traefik reverse proxy chuyển tiếp request đến đúng backend service. Trong dev mode, Vite proxy config trong [`vite.config.ts`](vite.config.ts) chuyển tiếp API calls.
