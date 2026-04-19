@@ -38,7 +38,7 @@ banned_word_id: jsonpath "$.id"
 [Asserts]
 jsonpath "$.word" == "hurlbadword"
 
-# Verify moderation impacts message content filtering
+# Verify moderation blocks banned-word messages
 POST {{base_url}}/api/messages
 Authorization: Bearer {{alice_token}}
 Content-Type: application/json
@@ -46,9 +46,9 @@ Content-Type: application/json
   "receiverId": {{bob_id}},
   "content": "hello hurlbadword world"
 }
-HTTP 201
+HTTP 400
 [Asserts]
-jsonpath "$.content" == "hello *** world"
+jsonpath "$.error" == "Message blocked: contains banned words"
 
 # Delete banned word
 DELETE {{base_url}}/api/moderation/banned-words/{{banned_word_id}}
