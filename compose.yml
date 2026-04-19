@@ -7,6 +7,7 @@ services:
 
     volumes:
       - ./gateway/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./gateway/dynamic.yml:/etc/traefik/dynamic.yml:ro
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock:ro
 
     depends_on:
@@ -20,6 +21,8 @@ services:
       - chatapp-network
 
     restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 8s
 
   frontend:
     build: ./frontend
@@ -35,6 +38,8 @@ services:
       - chatapp-network
 
     restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 8s
 
   api-specs:
     image: caddy:2-alpine
@@ -56,6 +61,8 @@ services:
       - chatapp-network
 
     restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 8s
 
   user-service:
     build: ./services/user-service
@@ -90,6 +97,8 @@ services:
       - chatapp-network
 
     restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 8s
 
     healthcheck:
       test: ["CMD", "node", "/app/healthcheck.mjs"]

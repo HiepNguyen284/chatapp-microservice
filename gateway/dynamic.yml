@@ -1,0 +1,6 @@
+http:
+  middlewares:
+    server-header:
+      headers:
+        customResponseHeaders:
+          Server: Traefik
